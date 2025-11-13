@@ -1,12 +1,13 @@
 from fastapi import WebSocket, WebSocketDisconnect, Depends, status, APIRouter
 from fastapi.exceptions import WebSocketException
 from sqlalchemy.orm import Session
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 import json
 import jwt
 from datetime import datetime
 import logging
 import importlib
+import asyncio
 
 from app.config import settings
 from app.infrastructure.db.database import get_db
@@ -120,6 +121,75 @@ class ConnectionManager:
 
 # Create global connection manager instance
 manager = ConnectionManager()
+
+
+class DebounceBroadcaster:
+    """
+    Debounces rapid-fire events per subdepartment channel.
+
+    - If multiple events arrive within `delay_ms`, they are buffered and sent as a single
+      batch message: { tipo: "batch", count, events: [...], timestamp }
+    - If only one event arrives within the window, the original single event is sent as-is
+      to preserve backward compatibility.
+    """
+
+    def __init__(self, delay_ms: int = 200):
+        self.delay = delay_ms / 1000.0
+        self._buffers: Dict[str, List[Dict[str, Any]]] = {}
+        self._tasks: Dict[str, asyncio.Task] = {}
+        self._lock = asyncio.Lock()
+
+    async def enqueue(self, cod_subdepar: str, payload: Dict[str, Any]):
+        async with self._lock:
+            # Initialize buffer list
+            buf = self._buffers.setdefault(cod_subdepar, [])
+            buf.append(payload)
+
+            # Cancel previous pending flush for this channel
+            task = self._tasks.get(cod_subdepar)
+            if task and not task.done():
+                task.cancel()
+
+            # Schedule a new flush
+            self._tasks[cod_subdepar] = asyncio.create_task(self._flush_after_delay(cod_subdepar))
+
+    async def _flush_after_delay(self, cod_subdepar: str):
+        try:
+            await asyncio.sleep(self.delay)
+            await self._flush_now(cod_subdepar)
+        except asyncio.CancelledError:
+            # Expected when a new event arrives before the debounce window ends
+            return
+        except Exception as e:
+            logger.error(f"Debounce flush error for {cod_subdepar}: {e}")
+
+    async def _flush_now(self, cod_subdepar: str):
+        async with self._lock:
+            items = self._buffers.get(cod_subdepar, [])
+            self._buffers[cod_subdepar] = []
+            # Clean task reference if this is the active task
+            self._tasks.pop(cod_subdepar, None)
+
+        if not items:
+            return
+
+        # Send single event as-is to maintain compatibility
+        if len(items) == 1:
+            await manager.broadcast(items[0], cod_subdepar)
+            return
+
+        # Build batch message
+        batch = {
+            "tipo": "batch",
+            "count": len(items),
+            "events": items,
+            "timestamp": datetime.now().isoformat(),
+        }
+        await manager.broadcast(batch, cod_subdepar)
+
+
+# Global debouncer instance
+debouncer = DebounceBroadcaster(delay_ms=200)
 
 async def get_current_user_from_token(
     token: Optional[str], db: Session = Depends(get_db)
@@ -305,8 +375,9 @@ async def broadcast_hito_update(cod_subdepar: str, hito_data: dict):
     if isinstance(hito_data, dict) and "tipo" not in hito_data:
         hito_data["tipo"] = "hito_actualizado"
     
-    await manager.broadcast(hito_data, cod_subdepar)
-    logger.info(f"Broadcast hito update to department {cod_subdepar}")
+    # Route through debouncer to coalesce rapid events
+    await debouncer.enqueue(cod_subdepar, hito_data)
+    logger.info(f"Queued hito update for department {cod_subdepar}")
 
 
 async def broadcast_departament_event(cod_subdepar: str, tipo: str, data: Optional[dict] = None):
@@ -328,5 +399,6 @@ async def broadcast_departament_event(cod_subdepar: str, tipo: str, data: Option
     payload.setdefault("tipo", tipo)
     payload.setdefault("timestamp", datetime.now().isoformat())
 
-    await manager.broadcast(payload, cod_subdepar)
-    logger.info(f"Broadcast event '{tipo}' to department {cod_subdepar}")
+    # Use debouncer to buffer frequent writes and reduce event spam
+    await debouncer.enqueue(cod_subdepar, payload)
+    logger.info(f"Queued event '{tipo}' to department {cod_subdepar}")

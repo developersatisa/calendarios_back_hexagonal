@@ -3,7 +3,7 @@ from starlette.concurrency import run_in_threadpool
 import logging
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 from sqlalchemy.orm import Session
 
 from app.infrastructure.db.database import SessionLocal
@@ -198,6 +198,33 @@ def configure_websockets(app: FastAPI):
                         subdeps = await run_in_threadpool(_infer_subdepar_for_proceso, session, proceso_id)
                     finally:
                         session.close()
+                    # Expandir por CIF (misma lógica del GET): incluir todos los subdeps asignados al CIF
+                    session_cif = _get_db_session()
+                    try:
+                        sql_cifs = text(
+                            """
+                            SELECT DISTINCT c.cif AS cif
+                            FROM [ATISA_Input].dbo.cliente_proceso cp
+                            JOIN [ATISA_Input].dbo.clientes c ON c.idcliente = cp.cliente_id
+                            WHERE cp.proceso_id = :id
+                            """
+                        )
+                        cifs_rows = await run_in_threadpool(lambda: session_cif.execute(sql_cifs, {"id": proceso_id}).mappings().all())
+                        cifs = [str(r["cif"]).strip() for r in cifs_rows if r.get("cif") is not None]
+                        if cifs:
+                            sql_subdeps = text(
+                                """
+                                SELECT DISTINCT sd.codSubDePar AS cod
+                                FROM [ATISA_Input].dbo.clienteSubDePar csd
+                                JOIN [ATISA_Input].dbo.SubDePar sd ON sd.codSubDePar = csd.codSubDePar
+                                WHERE csd.cif IN :cifs
+                                """
+                            ).bindparams(bindparam("cifs", expanding=True))
+                            extra = await run_in_threadpool(lambda: session_cif.execute(sql_subdeps, {"cifs": cifs}).mappings().all())
+                            extra_codes = [r["cod"] for r in extra]
+                            subdeps = list({*subdeps, *extra_codes})
+                    finally:
+                        session_cif.close()
                     # Build cambios from request body
                     allowed = {"nombre", "descripcion", "frecuencia", "temporalidad", "inicia_dia_1"}
                     cambios = {k: v for k, v in (parsed_body or {}).items() if k in allowed}
@@ -220,6 +247,34 @@ def configure_websockets(app: FastAPI):
                             subdeps = await run_in_threadpool(_infer_subdepar_for_hito, session, hito_id)
                         finally:
                             session.close()
+                        # Expandir por CIF (misma lógica del GET) para hito
+                        session_cif = _get_db_session()
+                        try:
+                            sql_cifs = text(
+                                """
+                                SELECT DISTINCT c.cif AS cif
+                                FROM [ATISA_Input].dbo.cliente_proceso_hito cph
+                                JOIN [ATISA_Input].dbo.cliente_proceso cp ON cp.id = cph.cliente_proceso_id
+                                JOIN [ATISA_Input].dbo.clientes c ON c.idcliente = cp.cliente_id
+                                WHERE cph.hito_id = :id
+                                """
+                            )
+                            cifs_rows = await run_in_threadpool(lambda: session_cif.execute(sql_cifs, {"id": hito_id}).mappings().all())
+                            cifs = [str(r["cif"]).strip() for r in cifs_rows if r.get("cif") is not None]
+                            if cifs:
+                                sql_subdeps = text(
+                                    """
+                                    SELECT DISTINCT sd.codSubDePar AS cod
+                                    FROM [ATISA_Input].dbo.clienteSubDePar csd
+                                    JOIN [ATISA_Input].dbo.SubDePar sd ON sd.codSubDePar = csd.codSubDePar
+                                    WHERE csd.cif IN :cifs
+                                    """
+                                ).bindparams(bindparam("cifs", expanding=True))
+                                extra = await run_in_threadpool(lambda: session_cif.execute(sql_subdeps, {"cifs": cifs}).mappings().all())
+                                extra_codes = [r["cod"] for r in extra]
+                                subdeps = list({*subdeps, *extra_codes})
+                        finally:
+                            session_cif.close()
                         allowed = {"nombre", "descripcion", "fecha_limite", "hora_limite", "obligatorio", "tipo", "habilitado"}
                         cambios = {k: v for k, v in (parsed_body or {}).items() if k in allowed}
                         for cod in subdeps:
@@ -247,6 +302,33 @@ def configure_websockets(app: FastAPI):
                         subdeps = await run_in_threadpool(_infer_subdepar_for_proceso, session, proceso_id)
                     finally:
                         session.close()
+                    # Expandir por CIF
+                    session_cif = _get_db_session()
+                    try:
+                        sql_cifs = text(
+                            """
+                            SELECT DISTINCT c.cif AS cif
+                            FROM [ATISA_Input].dbo.cliente_proceso cp
+                            JOIN [ATISA_Input].dbo.clientes c ON c.idcliente = cp.cliente_id
+                            WHERE cp.proceso_id = :id
+                            """
+                        )
+                        cifs_rows = await run_in_threadpool(lambda: session_cif.execute(sql_cifs, {"id": proceso_id}).mappings().all())
+                        cifs = [str(r["cif"]).strip() for r in cifs_rows if r.get("cif") is not None]
+                        if cifs:
+                            sql_subdeps = text(
+                                """
+                                SELECT DISTINCT sd.codSubDePar AS cod
+                                FROM [ATISA_Input].dbo.clienteSubDePar csd
+                                JOIN [ATISA_Input].dbo.SubDePar sd ON sd.codSubDePar = csd.codSubDePar
+                                WHERE csd.cif IN :cifs
+                                """
+                            ).bindparams(bindparam("cifs", expanding=True))
+                            extra = await run_in_threadpool(lambda: session_cif.execute(sql_subdeps, {"cifs": cifs}).mappings().all())
+                            extra_codes = [r["cod"] for r in extra]
+                            subdeps = list({*subdeps, *extra_codes})
+                    finally:
+                        session_cif.close()
                     allowed = {"proceso_id", "hito_id"}
                     cambios = {k: v for k, v in (parsed_body or {}).items() if k in allowed}
                     cambios["accion"] = "creado"
@@ -268,28 +350,40 @@ def configure_websockets(app: FastAPI):
                     if cliente_id is not None:
                         session = _get_db_session()
                         try:
-                            sql = text(
+                            # Obtener CIF del cliente
+                            sql_cif = text(
                                 """
-                                SELECT sd.codSubDePar AS cod
-                                FROM [ATISA_Input].dbo.clienteSubDePar csd
-                                JOIN [ATISA_Input].dbo.SubDePar sd ON sd.codSubDePar = csd.codSubDePar
-                                WHERE csd.id = :cliente_id
+                                SELECT c.cif AS cif
+                                FROM [ATISA_Input].dbo.clientes c
+                                WHERE c.idcliente = :cliente_id
                                 """
                             )
-                            row = await run_in_threadpool(
-                                lambda: session.execute(sql, {"cliente_id": cliente_id}).mappings().first()
-                            )
+                            row_cif = await run_in_threadpool(lambda: session.execute(sql_cif, {"cliente_id": cliente_id}).mappings().first())
+                            cif = row_cif["cif"] if row_cif else None
+                            codes: List[str] = []
+                            if cif:
+                                sql_subdeps = text(
+                                    """
+                                    SELECT sd.codSubDePar AS cod
+                                    FROM [ATISA_Input].dbo.clienteSubDePar csd
+                                    JOIN [ATISA_Input].dbo.SubDePar sd ON sd.codSubDePar = csd.codSubDePar
+                                    WHERE csd.cif = :cif
+                                    """
+                                )
+                                rows_sub = await run_in_threadpool(lambda: session.execute(sql_subdeps, {"cif": cif}).mappings().all())
+                                codes = [r["cod"] for r in rows_sub]
                         finally:
                             session.close()
-                        if row and row.get("cod"):
+                        if codes:
                             allowed = {"cliente_id", "idcliente", "proceso_id", "id_proceso", "fecha_inicio", "fecha_fin", "mes", "anio", "anterior_id", "id_anterior"}
                             cambios = {k: v for k, v in (parsed_body or {}).items() if k in allowed}
-                            await _emit_event(row["cod"], "cliente_proceso_creado", {
-                                "cliente_id": cliente_id,
-                                # Support both keys: 'proceso_id' and legacy 'id_proceso'
-                                "proceso_id": parsed_body.get("proceso_id", parsed_body.get("id_proceso")),
-                                "cambios": cambios,
-                            })
+                            for cod in sorted(set(codes)):
+                                await _emit_event(cod, "cliente_proceso_creado", {
+                                    "cliente_id": cliente_id,
+                                    # Support both keys: 'proceso_id' and legacy 'id_proceso'
+                                    "proceso_id": parsed_body.get("proceso_id", parsed_body.get("id_proceso")),
+                                    "cambios": cambios,
+                                })
                 # PUT updates (if ever added): infer by cp_id path param
                 elif method == "PUT":
                     import re
@@ -298,16 +392,39 @@ def configure_websockets(app: FastAPI):
                         cp_id = int(m.group(1))
                         session = _get_db_session()
                         try:
-                            cod = await run_in_threadpool(_infer_subdepar_for_cp, session, cp_id)
+                            # Obtener CIF del cliente del CP
+                            sql_cif = text(
+                                """
+                                SELECT c.cif AS cif
+                                FROM [ATISA_Input].dbo.cliente_proceso cp
+                                JOIN [ATISA_Input].dbo.clientes c ON c.idcliente = cp.cliente_id
+                                WHERE cp.id = :cp_id
+                                """
+                            )
+                            row_cif = await run_in_threadpool(lambda: session.execute(sql_cif, {"cp_id": cp_id}).mappings().first())
+                            cif = row_cif["cif"] if row_cif else None
+                            codes: List[str] = []
+                            if cif:
+                                sql_subdeps = text(
+                                    """
+                                    SELECT sd.codSubDePar AS cod
+                                    FROM [ATISA_Input].dbo.clienteSubDePar csd
+                                    JOIN [ATISA_Input].dbo.SubDePar sd ON sd.codSubDePar = csd.codSubDePar
+                                    WHERE csd.cif = :cif
+                                    """
+                                )
+                                rows_sub = await run_in_threadpool(lambda: session.execute(sql_subdeps, {"cif": cif}).mappings().all())
+                                codes = [r["cod"] for r in rows_sub]
                         finally:
                             session.close()
-                        if cod:
+                        if codes:
                             allowed = {"fecha_inicio", "fecha_fin", "mes", "anio", "anterior_id"}
                             cambios = {k: v for k, v in (parsed_body or {}).items() if k in allowed}
-                            await _emit_event(cod, "cliente_proceso_actualizado", {
-                                "cliente_proceso_id": cp_id,
-                                "cambios": cambios,
-                            })
+                            for cod in sorted(set(codes)):
+                                await _emit_event(cod, "cliente_proceso_actualizado", {
+                                    "cliente_proceso_id": cp_id,
+                                    "cambios": cambios,
+                                })
                 return response
 
             # Admin Hitos Departamento: actualizar campos por CPH
@@ -321,15 +438,67 @@ def configure_websockets(app: FastAPI):
                         data = await run_in_threadpool(_fetch_cph_by_id, session, cph_id)
                     finally:
                         session.close()
-                    if data and data.get("cod"):
+                    if data:
+                        # Cambios aplicados (si vienen en el body)
                         allowed = {"estado", "fecha_limite", "hora_limite", "tipo"}
                         cambios = {k: v for k, v in (parsed_body or {}).items() if k in allowed}
-                        await _emit_event(data["cod"], "hito_actualizado", {
-                            "cliente_proceso_hito_id": data["cph_id"],
-                            "nuevo_estado": data.get("estado"),
-                            "hito_id": data.get("hito_id"),
-                            "cambios": cambios,
-                        })
+
+                        # 1) Subdepartamentos por hito (relaciones existentes de CPH con mismo hito_id)
+                        session2 = _get_db_session()
+                        try:
+                            related_hito = await run_in_threadpool(_fetch_cph_updates_for_hito, session2, int(data.get("hito_id")))
+                        finally:
+                            session2.close()
+
+                        # 2) Subdepartamentos por CIF (misma lógica del GET): cliente completo asignado a varios subdepartamentos
+                        session3 = _get_db_session()
+                        try:
+                            sql_cif = text(
+                                """
+                                SELECT c.cif AS cif
+                                FROM [ATISA_Input].dbo.cliente_proceso_hito cph
+                                JOIN [ATISA_Input].dbo.cliente_proceso cp ON cp.id = cph.cliente_proceso_id
+                                JOIN [ATISA_Input].dbo.clientes c ON c.idcliente = cp.cliente_id
+                                WHERE cph.id = :id
+                                """
+                            )
+                            row_cif = await run_in_threadpool(lambda: session3.execute(sql_cif, {"id": cph_id}).mappings().first())
+                            cif = row_cif["cif"] if row_cif else None
+
+                            related_cif: List[Dict[str, Any]] = []
+                            if cif:
+                                sql_subdeps = text(
+                                    """
+                                    SELECT sd.codSubDePar AS cod
+                                    FROM [ATISA_Input].dbo.clienteSubDePar csd
+                                    JOIN [ATISA_Input].dbo.SubDePar sd ON sd.codSubDePar = csd.codSubDePar
+                                    WHERE csd.cif = :cif
+                                    """
+                                )
+                                rows_sub = await run_in_threadpool(lambda: session3.execute(sql_subdeps, {"cif": cif}).mappings().all())
+                                related_cif = [dict(r) for r in rows_sub]
+                        finally:
+                            session3.close()
+
+                        # Unificar subdepartamentos (por hito y por CIF), evitando duplicados
+                        cods: Dict[str, Dict[str, Any]] = {}
+                        for r in (related_hito or []):
+                            if r.get("cod"):
+                                cods[r["cod"]] = {"cph_id": r.get("cph_id"), "estado": r.get("estado")}
+                        for r in (related_cif or []):
+                            if r.get("cod") and r["cod"] not in cods:
+                                # Para los que vienen solo por CIF, usamos el CPH original y su estado
+                                cods[r["cod"]] = {"cph_id": data.get("cph_id"), "estado": data.get("estado")}
+
+                        # Emitir a todos los subdepartamentos resultantes
+                        for cod, meta in cods.items():
+                            payload = {
+                                "cliente_proceso_hito_id": meta.get("cph_id", data.get("cph_id")),
+                                "nuevo_estado": cambios.get("estado", meta.get("estado", data.get("estado"))),
+                                "hito_id": data.get("hito_id"),
+                                "cambios": cambios,
+                            }
+                            await _emit_event(cod, "hito_actualizado", payload)
                 return response
 
 
