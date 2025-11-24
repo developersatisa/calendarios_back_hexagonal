@@ -23,7 +23,7 @@ def get_repo(db: Session = Depends(get_db)):
 def get_repo_cliente_proceso_hito(db: Session = Depends(get_db)):
     return ClienteProcesoHitoRepositorySQL(db)
 
-@router.post("/", summary="Crear cumplimiento de hito",
+@router.post("", summary="Crear cumplimiento de hito",
     description="Registra el cumplimiento de un hito específico de un proceso de cliente.")
 def crear(
     data: dict = Body(..., example={
@@ -62,7 +62,7 @@ def crear(
         # Manejar errores inesperados
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
 
-@router.get("/", summary="Listar todos los cumplimientos",
+@router.get("", summary="Listar todos los cumplimientos",
     description="Devuelve todos los registros de cumplimiento de hitos con soporte para paginación y ordenación.")
 def listar(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
@@ -103,9 +103,24 @@ def listar(
     if not cumplimientos:
         raise HTTPException(status_code=404, detail="No se encontraron cumplimientos")
 
+    # Convertir modelos a diccionarios para incluir atributos dinámicos como num_documentos
+    cumplimientos_dict = []
+    for cumplimiento in cumplimientos:
+        cumplimiento_dict = {
+            "id": cumplimiento.id,
+            "cliente_proceso_hito_id": cumplimiento.cliente_proceso_hito_id,
+            "fecha": cumplimiento.fecha.isoformat() if cumplimiento.fecha else None,
+            "hora": str(cumplimiento.hora) if cumplimiento.hora else None,
+            "observacion": cumplimiento.observacion,
+            "usuario": cumplimiento.usuario,
+            "fecha_creacion": cumplimiento.fecha_creacion.isoformat() if cumplimiento.fecha_creacion else None,
+            "num_documentos": getattr(cumplimiento, 'num_documentos', 0)
+        }
+        cumplimientos_dict.append(cumplimiento_dict)
+
     return {
         "total": total,
-        "cumplimientos": cumplimientos
+        "cumplimientos": cumplimientos_dict
     }
 
 @router.get("/{id}", summary="Obtener cumplimiento por ID",
@@ -117,7 +132,18 @@ def obtener(
     cumplimiento = repo.obtener_por_id(id)
     if not cumplimiento:
         raise HTTPException(status_code=404, detail="Cumplimiento no encontrado")
-    return cumplimiento
+
+    # Convertir modelo a diccionario para incluir num_documentos
+    return {
+        "id": cumplimiento.id,
+        "cliente_proceso_hito_id": cumplimiento.cliente_proceso_hito_id,
+        "fecha": cumplimiento.fecha.isoformat() if cumplimiento.fecha else None,
+        "hora": str(cumplimiento.hora) if cumplimiento.hora else None,
+        "observacion": cumplimiento.observacion,
+        "usuario": cumplimiento.usuario,
+        "fecha_creacion": cumplimiento.fecha_creacion.isoformat() if cumplimiento.fecha_creacion else None,
+        "num_documentos": getattr(cumplimiento, 'num_documentos', 0)
+    }
 
 @router.get("/cliente-proceso-hito/{id}",
     summary="Obtener cumplimiento por ID de cliente_proceso_hito",
@@ -201,10 +227,25 @@ def obtener_por_cliente_proceso_hito(
             end = start + limit
             cumplimientos = cumplimientos[start:end]
 
+        # Convertir modelos a diccionarios para incluir atributos dinámicos como num_documentos
+        cumplimientos_dict = []
+        for cumplimiento in cumplimientos:
+            cumplimiento_dict = {
+                "id": cumplimiento.id,
+                "cliente_proceso_hito_id": cumplimiento.cliente_proceso_hito_id,
+                "fecha": cumplimiento.fecha.isoformat() if cumplimiento.fecha else None,
+                "hora": str(cumplimiento.hora) if cumplimiento.hora else None,
+                "observacion": cumplimiento.observacion,
+                "usuario": cumplimiento.usuario,
+                "fecha_creacion": cumplimiento.fecha_creacion.isoformat() if cumplimiento.fecha_creacion else None,
+                "num_documentos": getattr(cumplimiento, 'num_documentos', 0)
+            }
+            cumplimientos_dict.append(cumplimiento_dict)
+
         # Devolver respuesta exitosa incluso si no hay cumplimientos
         return {
             "total": total,
-            "cumplimientos": cumplimientos
+            "cumplimientos": cumplimientos_dict
         }
 
     except Exception as e:
@@ -266,7 +307,8 @@ def obtener_historial_por_cliente(
                 "hito_id": row.hito_id,
                 "hito": row.hito,
                 "fecha_limite": row.fecha_limite.isoformat() if row.fecha_limite else None,
-                "hora_limite": str(row.hora_limite) if row.hora_limite else None
+                "hora_limite": str(row.hora_limite) if row.hora_limite else None,
+                "num_documentos": getattr(row, 'num_documentos', 0) or 0
             })
 
         total = len(historial)

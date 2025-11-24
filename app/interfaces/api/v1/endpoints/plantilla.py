@@ -22,7 +22,7 @@ def get_repo(db: Session = Depends(get_db)):
     return PlantillaRepositorySQL(db)
 
 # Crear un nuevo plantilla
-@router.post("/")
+@router.post("")
 def crear(data: dict = Body(..., example={"nombre": "Plantilla Fiscal", "descripcion": "Para procesos fiscales"}), repo = Depends(get_repo)):
     plantilla = Plantilla(
         nombre=data.get("nombre"),
@@ -31,7 +31,7 @@ def crear(data: dict = Body(..., example={"nombre": "Plantilla Fiscal", "descrip
     return repo.guardar(plantilla)
 
 # Listar todos los plantillas
-@router.get("/")
+@router.get("")
 def listar(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
     limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),

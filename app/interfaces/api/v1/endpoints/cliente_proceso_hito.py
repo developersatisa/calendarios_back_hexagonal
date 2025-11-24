@@ -42,7 +42,7 @@ def crear(
     )
     return repo.guardar(hito)
 
-@router.get("/", summary="Listar todas las relaciones cliente-proceso-hito",
+@router.get("", summary="Listar todas las relaciones cliente-proceso-hito",
     description="Devuelve todas las relaciones entre clientes, procesos e hitos registradas.")
 def listar(repo = Depends(get_repo)):
     return repo.listar()

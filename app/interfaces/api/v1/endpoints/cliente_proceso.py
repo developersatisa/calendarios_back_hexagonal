@@ -33,11 +33,11 @@ def get_repo_proceso_hito_maestro(db: Session = Depends(get_db)):
 def get_repo_cliente_proceso_hito(db: Session = Depends(get_db)):
     return ClienteProcesoHitoRepositorySQL(db)
 
-@router.post("/")
+@router.post("")
 def crear(data: dict, repo = Depends(get_repo)):
     return crear_cliente_proceso(data, repo)
 
-@router.get("/")
+@router.get("")
 def listar(repo = Depends(get_repo)):
     return repo.listar()
 

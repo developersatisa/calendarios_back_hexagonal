@@ -27,7 +27,7 @@ def get_repo_cliente_proceso_hito(db: Session = Depends(get_db)):
 def get_repo_proceso_hito_maestro(db: Session = Depends(get_db)):
     return ProcesoHitoMaestroRepositorySQL(db)
 
-@router.post("/", summary="Crear un nuevo hito",
+@router.post("", summary="Crear un nuevo hito",
     description="Crea un nuevo hito especificando nombre, fecha límite, si es obligatorio y si está habilitado.")
 def crear(
     data: dict = Body(..., example={
@@ -79,7 +79,7 @@ def obtener_hitos_por_empleado(
 def listar_habilitados(repo = Depends(get_repo)):
     return repo.listar_habilitados()
 
-@router.get("/", summary="Listar todos los hitos",
+@router.get("", summary="Listar todos los hitos",
     description="Devuelve todos los hitos definidos en el sistema.")
 def listar(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),

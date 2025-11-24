@@ -57,7 +57,7 @@ def get_storage() -> DocumentStoragePort:
 
 # — Endpoints —
 
-@router.get("/", response_model=list[DocumentoResponse])
+@router.get("", response_model=list[DocumentoResponse])
 def listar_documentos(
     repo_doc: DocumentoRepository = Depends(get_repo)
 ):
@@ -73,7 +73,7 @@ def obtener_documento(
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     return doc
 
-@router.post("/", response_model=DocumentoResponse)
+@router.post("", response_model=DocumentoResponse)
 async def crear_documento(
     cliente_proceso_hito_id: int = Form(...),
     nombre_documento: str = Form(...),

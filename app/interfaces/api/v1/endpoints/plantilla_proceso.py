@@ -17,7 +17,7 @@ def get_db():
 def get_repo(db: Session = Depends(get_db)):
     return PlantillaProcesoRepositorySQL(db)
 
-@router.post("/", summary="Crear relación plantilla-proceso",
+@router.post("", summary="Crear relación plantilla-proceso",
     description="Crea una relación entre una plantilla y un proceso especificando sus IDs.")
 def crear(
     data: dict = Body(..., example={
@@ -33,7 +33,7 @@ def crear(
      return repo.guardar(relacion)
 
 
-@router.get("/", summary="Listar relaciones plantilla-proceso",
+@router.get("", summary="Listar relaciones plantilla-proceso",
     description="Devuelve todas las relaciones entre plantillas y procesos.")
 def listar(repo = Depends(get_repo)):
     return {

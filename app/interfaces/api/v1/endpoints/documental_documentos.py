@@ -86,7 +86,7 @@ def obtener_por_id(
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     return documento
 
-@router.post("/", summary="Crear documento", description="Crea un nuevo documento en el sistema.")
+@router.post("", summary="Crear documento", description="Crea un nuevo documento en el sistema.")
 async def crear_documento(
     cliente_id: str = Form(...),
     categoria_id: int = Form(...),

@@ -23,7 +23,7 @@ def get_db():
 def get_repo(db: Session = Depends(get_db)):
     return AuditoriaCalendariosRepositorySQL(db)
 
-@router.post("/",
+@router.post("",
             response_model=AuditoriaCalendariosResponse,
             summary="Crear registro de auditoría",
             description="Crea un nuevo registro de auditoría")
@@ -45,7 +45,7 @@ def crear(data: AuditoriaCalendariosCreate, repo = Depends(get_repo)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al crear registro de auditoría: {str(e)}")
 
-@router.get("/", summary="Listar registros de auditoría", description="Devuelve todos los registros de auditoría definidos en el sistema.")
+@router.get("", summary="Listar registros de auditoría", description="Devuelve todos los registros de auditoría definidos en el sistema.")
 def listar(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
     limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),

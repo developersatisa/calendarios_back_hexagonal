@@ -23,7 +23,7 @@ def get_db():
 def get_repo(db: Session = Depends(get_db)):
     return SqlDocumentalCategoriaRepository(session=db)
 
-@router.get("/",
+@router.get("",
            summary="Listar todas las categorias de documentos",
            description="Devuelve todas las categorías de documentos definidas en el sistema.")
 def listar(
@@ -135,7 +135,7 @@ def obtener_por_id(
         raise HTTPException(status_code=404, detail="Categoría de documento no encontrada")
     return categoria
 
-@router.post("/",
+@router.post("",
             response_model=DocumentalCategoriaResponse,
             summary="Crear nueva categoría de documento",
             description="Crea una nueva categoría de documento.")

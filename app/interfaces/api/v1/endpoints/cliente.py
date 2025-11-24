@@ -15,7 +15,7 @@ def get_db():
 
 def get_repo(db: Session = Depends(get_db)):
     return ClienteRepositorySQL(db)
-@router.get("/", summary="Listar clientes",
+@router.get("", summary="Listar clientes",
     description="Devuelve la lista completa de clientes registrados en el sistema.")
 def obtener_todos(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),

@@ -4,6 +4,7 @@ import re
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from app.config import settings
@@ -21,12 +22,20 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Hashing de contraseña
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # Bcrypt tiene un límite de 72 bytes, truncamos si es necesario
+    password_bytes = password.encode('utf-8')[:72]
+    return bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode('utf-8')
 
 
 # Verificación de contraseña
-def verify_password(plain_password: str, hashed_password: str) -> bool:    
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        # Bcrypt tiene un límite de 72 bytes, truncamos si es necesario
+        plain_password_bytes = plain_password.encode('utf-8')[:72]
+        hashed_password_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(plain_password_bytes, hashed_password_bytes)
+    except (ValueError, TypeError):
+        return False
 
 
 # Crear token JWT
@@ -46,7 +55,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])    
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
@@ -70,34 +79,34 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
 def validar_password_criterios(password: str) -> Dict[str, any]:
     """
     Valida una contraseña según criterios de seguridad.
-    
+
     Criterios:
     - Mínimo 8 caracteres
     - Al menos una letra minúscula
     - Al menos una letra mayúscula
     - Al menos un número
     - Al menos un carácter especial
-    
+
     Returns:
         Dict con 'valida' (bool) y 'errores' (List[str])
     """
     errores = []
-    
+
     if len(password) < 8:
         errores.append("La contraseña debe tener al menos 8 caracteres")
-    
+
     if not re.search(r'[a-z]', password):
         errores.append("La contraseña debe contener al menos una letra minúscula")
-    
+
     if not re.search(r'[A-Z]', password):
         errores.append("La contraseña debe contener al menos una letra mayúscula")
-    
+
     if not re.search(r'\d', password):
         errores.append("La contraseña debe contener al menos un número")
-    
+
     if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
         errores.append("La contraseña debe contener al menos un carácter especial (!@#$%^&*(),.?\":{}|<>)")
-    
+
     return {
         "valida": len(errores) == 0,
         "errores": errores

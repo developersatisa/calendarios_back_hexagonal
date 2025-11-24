@@ -20,7 +20,7 @@ def get_db():
 def get_repo(db: Session = Depends(get_db)):
     return ProcesoRepositorySQL(db)
 
-@router.post("/", summary="Crear un nuevo proceso",
+@router.post("", summary="Crear un nuevo proceso",
     description="Crea un proceso especificando nombre, frecuencia, temporalidad y fechas.")
 def crear(
     data: dict = Body(..., example={
@@ -39,7 +39,7 @@ def crear(
 def listar_habilitados(repo = Depends(get_repo)):
     return repo.listar_habilitados()
 
-@router.get("/", summary="Listar todos los procesos",
+@router.get("", summary="Listar todos los procesos",
     description="Devuelve todos los procesos registrados en el sistema.")
 def listar(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),

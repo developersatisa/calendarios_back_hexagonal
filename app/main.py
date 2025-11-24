@@ -29,6 +29,7 @@ from app.interfaces.api.v1.endpoints import (
     metadato,
     metadatos_area,
     documento,
+    documentos_cumplimiento,
     documental_categoria,
     documental_documentos,
     documento_metadato,
@@ -41,11 +42,13 @@ from app.interfaces.api.v1.endpoints import (
 
 # Orígenes permitidos para CORS
 origins = [
-    "http://localhost:5173",
+    "http://localhost:5174",
     "http://localhost:3000",      # frontend local
     "http://127.0.0.1:3000",
+    "http://10.150.22.15:5174",   # IP local frontend
     "http://10.150.22.15:5173",   # IP local frontend
-    "http://10.150.22.15:8049",   # IP local backend
+    "http://10.150.22.15:8050",   # IP local backend
+    "http://10.150.22.15:8049",
     "http://gestorcalendarios.test"
     # "https://tu-front-en-produccion.com",  <-- producción
 ]
@@ -83,6 +86,7 @@ app.include_router(plantilla_proceso.router,    dependencies=[Depends(get_curren
 app.include_router(proceso_hito_maestro.router, dependencies=[Depends(get_current_user)])
 app.include_router(metadato.router,             dependencies=[Depends(get_current_user)])
 app.include_router(documento.router,            dependencies=[Depends(get_current_user)])
+app.include_router(documentos_cumplimiento.router, dependencies=[Depends(get_current_user)])
 app.include_router(documental_categoria.router, dependencies=[Depends(get_current_user)])
 app.include_router(documental_documentos.router, dependencies=[Depends(get_current_user)])
 app.include_router(documento_metadato.router,   dependencies=[Depends(get_current_user)])

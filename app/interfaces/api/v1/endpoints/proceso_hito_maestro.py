@@ -17,7 +17,7 @@ def get_db():
 def get_repo(db: Session = Depends(get_db)):
     return ProcesoHitoMaestroRepositorySQL(db)
 
-@router.post("/", summary="Crear relación proceso-hito",
+@router.post("", summary="Crear relación proceso-hito",
     description="Crea una relación entre un proceso y un hito, especificando sus IDs.")
 def crear(
     data: dict = Body(..., example={
@@ -33,7 +33,7 @@ def crear(
     )
     return repo.guardar(relacion)
 
-@router.get("/", summary="Listar relaciones proceso-hito",
+@router.get("", summary="Listar relaciones proceso-hito",
     description="Devuelve todas las relaciones entre procesos e hitos registradas.")
 def listar(repo = Depends(get_repo)):
     return {
