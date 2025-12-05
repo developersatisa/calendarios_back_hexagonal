@@ -36,7 +36,9 @@ from app.interfaces.api.v1.endpoints import (
     subdepar,
     metricas,
     auditoria_calendarios,
-    admin_hitos_departamento
+    admin_hitos_departamento,
+    exportar_status_hitos,
+    status_todos_clientes
 )
 
 
@@ -95,6 +97,8 @@ app.include_router(subdepar.router,             dependencies=[Depends(get_curren
 app.include_router(metricas.router,             dependencies=[Depends(get_current_user)])
 app.include_router(auditoria_calendarios.router, dependencies=[Depends(get_current_user)])
 app.include_router(admin_hitos_departamento.router, dependencies=[Depends(get_current_user)])
+app.include_router(exportar_status_hitos.router, dependencies=[Depends(get_current_user)])
+app.include_router(status_todos_clientes.router, dependencies=[Depends(get_current_user)])
 
 
 configure_websockets(app)
