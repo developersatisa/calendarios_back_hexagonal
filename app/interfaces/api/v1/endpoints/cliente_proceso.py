@@ -51,7 +51,7 @@ def get(id: int, repo = Depends(get_repo)):
 @router.get("/cliente/{cliente_id}")
 def get_por_cliente(cliente_id: str,
                     page: Optional[int] = Query(None, ge=1, description="Página actual"),
-                    limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),
+                    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
                     repo = Depends(get_repo)):
 
     cliente_procesos = repo.listar_por_cliente(cliente_id)
@@ -77,7 +77,7 @@ def listar_habilitados(repo = Depends(get_repo)):
 def get_habilitados_por_cliente(
     cliente_id: str,
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
-    limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
     repo = Depends(get_repo)
 ):
     cliente_procesos = repo.listar_habilitados_por_cliente(cliente_id)

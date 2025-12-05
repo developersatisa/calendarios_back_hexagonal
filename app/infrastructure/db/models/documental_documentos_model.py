@@ -1,6 +1,6 @@
 # app/infrastructure/db/models/documental_documentos_model.py
 
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from app.infrastructure.db.database import Base
 
 class DocumentalDocumentosModel(Base):
@@ -12,3 +12,4 @@ class DocumentalDocumentosModel(Base):
     nombre_documento = Column(String(255), nullable=False)
     original_file_name = Column(String(255), nullable=False)
     stored_file_name = Column(String(255), nullable=False)
+    fecha_creacion = Column(DateTime, nullable=True)

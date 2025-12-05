@@ -21,7 +21,7 @@ def get_repo(db: Session = Depends(get_db)):
 def get_repo_metadato(db: Session = Depends(get_db)):
     return SQLMetadatoRepository(db)
 
-@router.get("/", response_model=list[MetadatosAreaRead])
+@router.get("", response_model=list[MetadatosAreaRead])
 def listar(repo: MetadatosAreaRepository = Depends(get_repo)):
     return repo.get_all()
 
@@ -32,7 +32,7 @@ def obtener(id: int, repo: MetadatosAreaRepository = Depends(get_repo)):
         raise HTTPException(status_code=404, detail="No encontrado")
     return result
 
-@router.post("/", response_model=MetadatosAreaRead)
+@router.post("", response_model=MetadatosAreaRead)
 def crear(payload: MetadatosAreaCreate, repo: MetadatosAreaRepository = Depends(get_repo), repo_metadato: SQLMetadatoRepository = Depends(get_repo_metadato)):
 
     use_case = CrearMetadatosAreaUseCase(repo, repo_metadato)

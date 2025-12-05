@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from datetime import datetime
 from app.domain.entities.documental_documentos import DocumentalDocumentos
 from app.domain.repositories.documental_documentos_repository import DocumentalDocumentosRepository
 from app.domain.repositories.cliente_repository import ClienteRepository
@@ -48,7 +49,8 @@ class CrearDocumentoCategoriaUseCase:
             categoria_id=categoria_id,
             nombre_documento=nombre_documento,
             original_file_name=original_file_name,
-            stored_file_name=stored_file_name
+            stored_file_name=stored_file_name,
+            fecha_creacion=datetime.now()
         )
 
         return self.documento_repo.guardar(nuevo_doc)

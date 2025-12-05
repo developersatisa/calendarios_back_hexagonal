@@ -16,7 +16,8 @@ class SqlDocumentalDocumentosRepository(DocumentalDocumentosRepository):
             categoria_id=modelo.categoria_id,
             nombre_documento=modelo.nombre_documento,
             original_file_name=modelo.original_file_name,
-            stored_file_name=modelo.stored_file_name
+            stored_file_name=modelo.stored_file_name,
+            fecha_creacion=modelo.fecha_creacion
         )
 
     def guardar(self, documento_documentos: DocumentalDocumentos) -> DocumentalDocumentos:

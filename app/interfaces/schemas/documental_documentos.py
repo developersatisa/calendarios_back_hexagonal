@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 class DocumentalDocumentosCreate(BaseModel):
     cliente_id: str
@@ -22,6 +23,7 @@ class DocumentalDocumentosResponse(BaseModel):
     nombre_documento: str
     original_file_name: str
     stored_file_name: str
+    fecha_creacion: Optional[datetime] = None
 
     class Config:
         orm_mode = True

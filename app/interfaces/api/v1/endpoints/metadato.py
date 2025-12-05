@@ -24,7 +24,7 @@ def get_repo(db: Session = Depends(get_db)):
 @router.get("/")
 def listar_metadatos(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
-    limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
     sort_field: Optional[str] = Query(None, description="Campo por el cual ordenar"),
     sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
     repo = Depends(get_repo)
@@ -84,7 +84,7 @@ def obtener_metadato(metadato_id: int, repo = Depends(get_repo)):
         raise HTTPException(status_code=404, detail="Metadato no encontrado")
     return result
 
-@router.post("/", response_model=MetadatoRead)
+@router.post("", response_model=MetadatoRead)
 def crear_metadato(payload: MetadatoCreate, repo = Depends(get_repo)):
     return repo.save(payload)
 

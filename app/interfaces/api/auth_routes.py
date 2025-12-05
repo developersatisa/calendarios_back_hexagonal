@@ -37,7 +37,7 @@ def login_for_access_token(
     if not verify_password(form_data.password, cliente.hashed_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Clave incorrecta")
 
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)    
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={
             "sub": cliente.nombre_cliente,
@@ -73,12 +73,36 @@ def refresh_token_view(data: RefreshTokenRequest):
 def sso_login():
     """
     Inicia el proceso de autenticación SSO con Microsoft Azure AD.
-    Devuelve la URL de autenticación donde el usuario debe ser redirigido.
+
+    Este endpoint genera una URL de autorización de Azure AD que debe ser usada
+    para redirigir al usuario al portal de autenticación de Microsoft.
+
+    **Flujo:**
+    1. El cliente llama a este endpoint
+    2. El backend genera una URL de autorización de Azure AD
+    3. El cliente redirige al usuario a esa URL
+    4. El usuario se autentica en Azure AD
+    5. Azure AD redirige al usuario a `/sso/callback` con un código
+
+    **Returns:**
+        - `auth_url`: URL completa de Azure AD donde el usuario debe autenticarse
+        - `message`: Mensaje descriptivo
+
+    **Raises:**
+        - `503 Service Unavailable`: Si SSO no está configurado correctamente
+
+    **Example Response:**
+    ```json
+    {
+        "auth_url": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize?...",
+        "message": "Redirige al usuario a esta URL para completar la autenticación"
+    }
+    ```
     """
     try:
         sso_service = SSOService()
         auth_url = sso_service.get_auth_url()
-        
+
         return {
             "auth_url": auth_url,
             "message": "Redirige al usuario a esta URL para completar la autenticación"
@@ -92,12 +116,58 @@ def sso_login():
 
 @router.get("/sso/callback", summary="Callback del SSO que devuelve el JWT")
 def sso_callback(
-    code: str = Query(..., description="Código de autorización de Azure AD"),
+    code: str = Query(..., description="Código de autorización de Azure AD (proporcionado por Azure después de la autenticación)"),
     db: Session = Depends(get_db)
 ):
     """
     Endpoint de callback para completar la autenticación SSO.
-    Intercambia el código de autorización por un token de acceso y devuelve un JWT.
+
+    Este endpoint es llamado automáticamente por Azure AD después de que el usuario
+    se autentica exitosamente. Azure AD redirige al usuario aquí con un código de
+    autorización que se intercambia por tokens.
+
+    **Flujo:**
+    1. Azure AD redirige al usuario aquí con `?code=xxx`
+    2. El backend intercambia el código por un token de acceso de Azure AD
+    3. El backend usa el token para obtener información del usuario desde Microsoft Graph
+    4. El backend valida que el usuario esté autorizado (dominio @atisa.es o @atisa-grupo.com)
+    5. El backend genera tokens JWT propios de la aplicación
+    6. Se devuelven los tokens JWT al cliente
+
+    **Query Parameters:**
+        - `code` (required): Código de autorización de Azure AD. Válido por ~10 minutos, un solo uso.
+
+    **Returns:**
+        - `access_token`: Token JWT para autenticar peticiones a la API
+        - `refresh_token`: Token JWT para renovar el access_token sin re-autenticación
+        - `token_type`: Tipo de token (siempre "bearer")
+        - `user_info`: Información del usuario autenticado
+
+    **Raises:**
+        - `400 Bad Request`: Si hay error al obtener el token o información del usuario
+        - `403 Forbidden`: Si el usuario no está autorizado (dominio no permitido)
+        - `503 Service Unavailable`: Si SSO no está configurado correctamente
+
+    **Example Response:**
+    ```json
+    {
+        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "token_type": "bearer",
+        "user_info": {
+            "username": "Juan Pérez",
+            "email": "juan.perez@atisa.es",
+            "id_api_cliente": 1,
+            "atisa": true,
+            "rol": "admin"
+        }
+    }
+    ```
+
+    **Notas:**
+    - El código de autorización solo puede usarse una vez
+    - El código expira después de ~10 minutos
+    - Solo usuarios con dominios @atisa.es o @atisa-grupo.com están autorizados
     """
     try:
         sso_service = SSOService()
@@ -106,9 +176,9 @@ def sso_callback(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"SSO no disponible: {str(e)}"
         )
-    
+
     user_mapping_service = UserMappingServiceImpl(db)
-    
+
     # Intercambia el código por un token
     token_result = sso_service.get_token_from_code(code)
     if not token_result:
@@ -116,7 +186,7 @@ def sso_callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error al obtener token de acceso"
         )
-    
+
     # Obtiene información del usuario
     user_info = sso_service.get_user_info(token_result["access_token"])
     if not user_info:
@@ -124,17 +194,17 @@ def sso_callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error al obtener información del usuario"
         )
-    
+
     # Extrae datos del usuario
     username = user_info.get("displayName", "")
     email = user_info.get("mail") or user_info.get("userPrincipalName", "")
-    
+
     if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No se pudo obtener el email del usuario"
         )
-    
+
     # Obtiene el id_api_cliente basado en el email
     id_api_cliente = user_mapping_service.get_api_cliente_id_by_email(email)
     if not id_api_cliente:
@@ -142,7 +212,7 @@ def sso_callback(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario no autorizado para acceder al sistema"
         )
-    
+
     # Crea el JWT con la información requerida
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -156,7 +226,7 @@ def sso_callback(
         },
         expires_delta=access_token_expires
     )
-    
+
     # Crea también un refresh token
     refresh_token = create_refresh_token(
         data={
@@ -167,7 +237,7 @@ def sso_callback(
             "rol": "admin"
         }
     )
-    
+
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -180,5 +250,3 @@ def sso_callback(
             "rol": "admin"
         }
     }
-
-

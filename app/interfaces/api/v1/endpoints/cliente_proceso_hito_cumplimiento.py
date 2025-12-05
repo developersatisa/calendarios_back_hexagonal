@@ -66,7 +66,7 @@ def crear(
     description="Devuelve todos los registros de cumplimiento de hitos con soporte para paginación y ordenación.")
 def listar(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
-    limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
     sort_field: Optional[str] = Query(None, description="Campo por el cual ordenar (id, cliente_proceso_hito_id, fecha, hora, observacion, usuario)"),
     sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
     repo = Depends(get_repo)
@@ -151,7 +151,7 @@ def obtener(
 def obtener_por_cliente_proceso_hito(
     id: int = Path(..., description="ID de cliente_proceso_hito a consultar"),
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
-    limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
     sort_field: Optional[str] = Query(None, description="Campo por el cual ordenar (id, cliente_proceso_hito_id, fecha, hora, observacion, usuario)"),
     sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
     repo = Depends(get_repo)
@@ -285,7 +285,7 @@ def eliminar(
 def obtener_historial_por_cliente(
     cliente_id: str = Path(..., description="ID del cliente para consultar su historial"),
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
-    limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
     repo = Depends(get_repo)
 ):
     try:

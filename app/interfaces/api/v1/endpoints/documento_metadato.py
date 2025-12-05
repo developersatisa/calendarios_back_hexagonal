@@ -25,11 +25,11 @@ def get_service(db: Session = Depends(get_db)) -> DocumentoMetadatoService:
     meta_repo = SQLMetadatoRepository(db)
     return DocumentoMetadatoService(repo, doc_repo, meta_repo)
 
-@router.post("/", response_model=DocumentoMetadatoOut)
+@router.post("", response_model=DocumentoMetadatoOut)
 def crear(data: DocumentoMetadatoCreate, service: DocumentoMetadatoService = Depends(get_service)):
     return service.crear(DocumentoMetadato(id=None, **data.dict()))
 
-@router.get("/", response_model=List[DocumentoMetadatoOut])
+@router.get("", response_model=List[DocumentoMetadatoOut])
 def listar(service: DocumentoMetadatoService = Depends(get_service)):
     return service.listar()
 
@@ -40,7 +40,7 @@ def obtener(id: int, service: DocumentoMetadatoService = Depends(get_service)):
         raise HTTPException(status_code=404, detail="No encontrado")
     return doc
 
-@router.put("/", response_model=DocumentoMetadatoOut)
+@router.put("", response_model=DocumentoMetadatoOut)
 def actualizar(data: DocumentoMetadatoUpdate, service: DocumentoMetadatoService = Depends(get_service)):
     return service.actualizar(DocumentoMetadato(**data.dict()))
 
