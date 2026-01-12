@@ -10,4 +10,4 @@ passlib[bcrypt]
 pydantic-settings>=2.0.0
 python-multipart
 msal
-
+openpyxl

@@ -51,13 +51,16 @@ origins = [
     "http://10.150.22.15:5173",   # IP local frontend
     "http://10.150.22.15:8050",   # IP local backend
     "http://10.150.22.15:8049",
-    "http://gestorcalendarios.test"
+    "http://gestorcalendarios.test",
+    "http://82.223.35.103:8011",  # IP del servidor
+    "http://localhost:8011"
     # "https://tu-front-en-produccion.com",  <-- producción
 ]
 
 app = FastAPI(
     title="API de Procesos de Clientes",
     version="1.0.0",
+    root_path="/api",  # Importante cuando está detrás de un proxy
 )
 
 # Middleware de CORS
