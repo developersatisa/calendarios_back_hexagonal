@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Path, Query
+from typing import Optional
 from sqlalchemy.orm import Session
 from app.infrastructure.db.database import SessionLocal
 from app.infrastructure.db.repositories.cliente_proceso_hito_repository_sql import ClienteProcesoHitoRepositorySQL
@@ -43,6 +44,52 @@ def crear(
         tipo=data["tipo"]
     )
     return repo.guardar(hito)
+
+@router.get("/fecha", summary="Obtener IDs por mes y año",
+    description="Devuelve una lista de IDs de cliente_proceso_hito filtrada por mes y año.")
+def obtener_por_fecha(
+    anio: int = Query(..., description="Año a filtrar (YYYY)"),
+    mes: int = Query(..., description="Mes a filtrar (1-12)"),
+    page: Optional[int] = Query(None, ge=1, description="Página actual"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página"),
+    sort_by: Optional[str] = Query(None, description="Campo por el cual ordenar (id, fecha_limite, hora_limite, cliente, hito, proceso, estado)"),
+    order: Optional[str] = Query("asc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
+    repo = Depends(get_repo)
+):
+    try:
+        items = repo.obtener_por_fecha(anio, mes)
+
+        # Aplicar ordenación
+        if sort_by:
+            reverse = order == "desc"
+            def sort_key(item):
+                val = item.get(sort_by)
+                if val is None:
+                    return ""
+                # Manejo especial para fechas si es necesario, pero aquí ya vienen como objetos date
+                return str(val).lower() if isinstance(val, str) else val
+
+            try:
+                items.sort(key=sort_key, reverse=reverse)
+            except Exception:
+                pass
+
+        total = len(items)
+
+        # Aplicar paginación
+        if page is not None and limit is not None:
+            start = (page - 1) * limit
+            end = start + limit
+            items = items[start:end]
+
+        return {
+            "anio": anio,
+            "mes": mes,
+            "total": total,
+            "items": items
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener IDs: {str(e)}")
 
 @router.get("", summary="Listar todas las relaciones cliente-proceso-hito",
     description="Devuelve todas las relaciones entre clientes, procesos e hitos registradas.")

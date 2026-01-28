@@ -25,3 +25,8 @@ class ClienteRepository(ABC):
     def listar_por_hito_id(self, hito_id: int) -> List[Cliente]:
         """Lista clientes que tienen un hito específico en su calendario"""
         pass
+
+    @abstractmethod
+    def listar_empresas_usuario(self, email: str) -> List[Cliente]:
+        """Lista empresas a las que pertenece un usuario"""
+        pass

@@ -13,6 +13,11 @@ class ClienteProcesoHitoRepository(ABC):
         pass
 
     @abstractmethod
+    def obtener_por_fecha(self, anio: int, mes: int) -> list:
+        """Obtiene una lista de cliente_proceso_hito para un mes y año dados"""
+        pass
+
+    @abstractmethod
     def obtener_por_id(self, id: int):
         pass
 

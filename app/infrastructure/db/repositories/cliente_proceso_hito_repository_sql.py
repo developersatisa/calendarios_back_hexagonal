@@ -19,6 +19,49 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
     def listar(self):
         return self.session.query(ClienteProcesoHitoModel).all()
 
+    def obtener_por_fecha(self, anio: int, mes: int) -> list:
+        from sqlalchemy import extract
+        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
+        from app.infrastructure.db.models.cliente_model import ClienteModel
+        from app.infrastructure.db.models.hito_model import HitoModel
+        from app.infrastructure.db.models.proceso_model import ProcesoModel
+
+        query = self.session.query(
+            ClienteProcesoHitoModel.id,
+            ClienteProcesoHitoModel.fecha_limite,
+            ClienteProcesoHitoModel.estado,
+            ClienteProcesoHitoModel.hora_limite,
+            ClienteModel.razsoc,
+            HitoModel.nombre,
+            ProcesoModel.nombre
+        ).join(
+            ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id
+        ).join(
+            ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente
+        ).join(
+            HitoModel, ClienteProcesoHitoModel.hito_id == HitoModel.id
+        ).join(
+            ProcesoModel, ClienteProcesoModel.proceso_id == ProcesoModel.id
+        ).filter(
+            extract('year', ClienteProcesoHitoModel.fecha_limite) == anio,
+            extract('month', ClienteProcesoHitoModel.fecha_limite) == mes,
+            ClienteProcesoHitoModel.habilitado == True
+        )
+
+        resultados = query.all()
+
+        return [
+            {
+                "id": r[0],
+                "fecha_limite": r[1],
+                "estado": r[2],
+                "hora_limite": r[3],
+                "cliente": r[4],
+                "hito": r[5],
+                "proceso": r[6]
+            } for r in resultados
+        ]
+
     def obtener_por_id(self, id: int):
         return self.session.query(ClienteProcesoHitoModel).filter_by(id=id).first()
 
