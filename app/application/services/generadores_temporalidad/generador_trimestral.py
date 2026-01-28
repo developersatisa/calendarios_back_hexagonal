@@ -23,7 +23,10 @@ class GeneradorTrimestral(GeneradorTemporalidad):
 
         # Determinar fecha de inicio: prioridad a data.fecha_inicio (respetando el día exacto)
         if hasattr(data, 'fecha_inicio') and data.fecha_inicio:
-            dia_inicio_deseado = data.fecha_inicio.day
+            if proceso_maestro.inicia_dia_1:
+                dia_inicio_deseado = 1
+            else:
+                dia_inicio_deseado = data.fecha_inicio.day
             anio = data.fecha_inicio.year
             mes_inicio_proceso = data.fecha_inicio.month
         else:

@@ -24,7 +24,10 @@ class GeneradorQuincenal(GeneradorTemporalidad):
 
         # Determinar fecha de inicio: prioridad a data.fecha_inicio (respetando el día exacto)
         if hasattr(data, 'fecha_inicio') and data.fecha_inicio:
-            fecha_inicio_proceso = data.fecha_inicio
+            if proceso_maestro.inicia_dia_1:
+                fecha_inicio_proceso = date(data.fecha_inicio.year, data.fecha_inicio.month, 1)
+            else:
+                fecha_inicio_proceso = data.fecha_inicio
             anio = fecha_inicio_proceso.year
         else:
             # Usar año/mes/día del primer hito como base (si no, día 1)

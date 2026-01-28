@@ -52,8 +52,13 @@ origins = [
     "http://10.150.22.15:8050",   # IP local backend
     "http://10.150.22.15:8049",
     "http://gestorcalendarios.test",
-    "http://82.223.35.103:8011",  # IP del servidor
-    "http://localhost:8011"
+    "https://gestorcalendarios.es",
+    "https://82.223.35.103:8022",  # IP del servidor
+    "https://localhost:8022",
+    "http://gestorcalendarios.es",
+    "http://82.223.35.103:8022",  # IP del servidor
+    "http://localhost:8022",
+    "https://gestorcalendarios.atisa.es"
     # "https://tu-front-en-produccion.com",  <-- producción
 ]
 
