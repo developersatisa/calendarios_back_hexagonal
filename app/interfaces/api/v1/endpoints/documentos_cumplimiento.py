@@ -1,9 +1,10 @@
 # app/interfaces/api/v1/endpoints/documentos_cumplimiento.py
 
 import io
+import os
 import zipfile
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.infrastructure.db.database import SessionLocal
@@ -132,9 +133,8 @@ async def descargar_documentos_cumplimiento(
     storage: DocumentStoragePort = Depends(get_storage),
 ):
     """
-    Descarga los documentos de un cumplimiento.
-    Si hay un solo documento, lo devuelve directamente.
-    Si hay más de uno, los comprime en un ZIP.
+    Descarga los documentos de un cumplimiento en un archivo ZIP.
+    Incluso si hay un solo documento, se descarga como ZIP para consistencia del front.
     """
     # 1) Obtener todos los documentos del cumplimiento
     documentos = repo_doc.get_by_cumplimiento_id(cumplimiento_id)
@@ -161,66 +161,56 @@ async def descargar_documentos_cumplimiento(
 
     cif = cliente.cif
 
-    # 3) Si hay un solo documento, devolverlo directamente
-    if len(documentos) == 1:
-        doc = documentos[0]
-        try:
-            contenido = storage.get(cif, doc.stored_file_name)
-            # Determinar el tipo de contenido basado en la extensión
-            original_name = doc.original_file_name or doc.stored_file_name
-            media_type = "application/octet-stream"
-            if original_name.lower().endswith('.pdf'):
-                media_type = "application/pdf"
-            elif original_name.lower().endswith(('.jpg', '.jpeg')):
-                media_type = "image/jpeg"
-            elif original_name.lower().endswith('.png'):
-                media_type = "image/png"
-            elif original_name.lower().endswith(('.doc', '.docx')):
-                media_type = "application/msword" if original_name.lower().endswith('.doc') else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            elif original_name.lower().endswith(('.xls', '.xlsx')):
-                media_type = "application/vnd.ms-excel" if original_name.lower().endswith('.xls') else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-            return Response(
-                content=contenido,
-                media_type=media_type,
-                headers={
-                    "Content-Disposition": f'attachment; filename="{original_name}"'
-                }
-            )
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="Archivo no encontrado en el almacenamiento")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error al leer el archivo: {str(e)}")
-
-    # 4) Si hay más de un documento, crear un ZIP
+    # 3) Crear un ZIP (siempre, incluso para un solo archivo)
     zip_buffer = io.BytesIO()
+    nombres_usados = set()
+
     try:
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            archivos_incluidos = 0
             for doc in documentos:
                 try:
                     contenido = storage.get(cif, doc.stored_file_name)
-                    # Usar el nombre original si está disponible, sino el stored
-                    nombre_archivo = doc.original_file_name or doc.stored_file_name
+                    if not contenido:
+                        continue
+
+                    # Gestionar nombre del archivo y evitar duplicados en el ZIP
+                    nombre_base = doc.original_file_name or doc.stored_file_name
+                    nombre_archivo = nombre_base
+                    contador = 1
+
+                    while nombre_archivo in nombres_usados:
+                        nombre_sin_ext, ext = os.path.splitext(nombre_base)
+                        nombre_archivo = f"{nombre_sin_ext}_{contador}{ext}"
+                        contador += 1
+
+                    nombres_usados.add(nombre_archivo)
                     zip_file.writestr(nombre_archivo, contenido)
+                    archivos_incluidos += 1
                 except FileNotFoundError:
-                    # Continuar con los demás archivos si uno no se encuentra
                     continue
-                except Exception as e:
-                    # Continuar con los demás archivos si hay un error
+                except Exception:
                     continue
+
+        if archivos_incluidos == 0:
+            raise HTTPException(status_code=404, detail="No se pudieron recuperar los archivos del almacenamiento")
 
         zip_buffer.seek(0)
-        zip_content = zip_buffer.read()
 
-        if len(zip_content) == 0:
-            raise HTTPException(status_code=500, detail="No se pudo crear el archivo ZIP")
+        # Log para depuración
+        print(f"DEBUG: Generado ZIP para cumplimiento {cumplimiento_id}. Archivos: {archivos_incluidos}. Tamaño: {zip_buffer.getbuffer().nbytes} bytes")
 
-        return Response(
-            content=zip_content,
+        return StreamingResponse(
+            zip_buffer,
             media_type="application/zip",
             headers={
-                "Content-Disposition": f'attachment; filename="documentos_cumplimiento_{cumplimiento_id}.zip"'
+                "Content-Disposition": f'attachment; filename="documentos_cumplimiento_{cumplimiento_id}.zip"',
+                "Access-Control-Expose-Headers": "Content-Disposition"
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error al crear el archivo ZIP: {str(e)}")

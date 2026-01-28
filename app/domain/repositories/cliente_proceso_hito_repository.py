@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import date
 from app.domain.entities.cliente_proceso_hito import ClienteProcesoHito
 
 class ClienteProcesoHitoRepository(ABC):
@@ -51,4 +52,9 @@ class ClienteProcesoHitoRepository(ABC):
     @abstractmethod
     def sincronizar_estado_cliente_proceso(self, cliente_proceso_id: int):
         """Verifica y actualiza el estado de habilitado de un cliente_proceso basado en sus hitos"""
+        pass
+
+    @abstractmethod
+    def actualizar_fecha_masivo(self, hito_id: int, cliente_ids: list[int], nueva_fecha: date, fecha_desde: date, fecha_hasta: date | None = None) -> int:
+        """Actualiza la fecha_limite de un hito para múltiples clientes, aplicando solo si la fecha actual >= fecha_desde"""
         pass

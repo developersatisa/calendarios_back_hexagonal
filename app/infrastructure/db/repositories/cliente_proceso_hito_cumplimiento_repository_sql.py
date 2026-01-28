@@ -216,3 +216,38 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
 
         result = self.session.execute(query, {"cliente_id": cliente_id})
         return result.fetchall()
+
+    def cumplir_masivo(self, cliente_proceso_hito_ids: list[int], fecha: str, hora: str = None,
+                      observacion: str = None, usuario: str = None):
+        """Implementación de cumplimiento masivo por lista de IDs"""
+        from app.infrastructure.db.models.cliente_proceso_hito_model import ClienteProcesoHitoModel
+        from datetime import datetime
+
+        # 1. Buscar los hitos candidatos (solo habilitados)
+        hitos_candidatos = self.session.query(ClienteProcesoHitoModel).filter(
+            ClienteProcesoHitoModel.id.in_(cliente_proceso_hito_ids),
+            ClienteProcesoHitoModel.habilitado == True
+        ).all()
+
+        cumplimientos_creados = 0
+
+        for hito in hitos_candidatos:
+            # Crear cumplimiento
+            nuevo_cumplimiento = ClienteProcesoHitoCumplimientoModel(
+                cliente_proceso_hito_id=hito.id,
+                fecha=fecha,
+                hora=hora,
+                observacion=observacion,
+                usuario=usuario,
+                fecha_creacion=datetime.utcnow()
+            )
+            self.session.add(nuevo_cumplimiento)
+
+            # Actualizar estado del hito
+            hito.estado = "Finalizado"
+            hito.fecha_estado = datetime.utcnow()
+
+            cumplimientos_creados += 1
+
+        self.session.commit()
+        return cumplimientos_creados

@@ -1,8 +1,15 @@
 # app/interfaces/api/v1/endpoints/status_todos_clientes.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
+import io
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment
+except ImportError:
+    pass
 from typing import Optional, List, Dict, Any
 from datetime import date, time
 
@@ -234,3 +241,105 @@ def get_status_todos_clientes(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener hitos: {str(e)}")
+
+
+@router.get("/exportar-excel", summary="Exportar status de todos los clientes a Excel")
+def exportar_status_todos_excel(
+    fecha_desde: Optional[str] = Query(None, description="Filtrar por fecha límite desde (YYYY-MM-DD)"),
+    fecha_hasta: Optional[str] = Query(None, description="Filtrar por fecha límite hasta (YYYY-MM-DD)"),
+    cliente_id: Optional[str] = Query(None, description="Filtrar por ID de cliente"),
+    proceso_id: Optional[int] = Query(None, description="Filtrar por ID de proceso"),
+    hito_id: Optional[int] = Query(None, description="Filtrar por ID de hito"),
+    db: Session = Depends(get_db)
+):
+    """
+    Exporta a Excel la misma información que el listado de hitos de todos los clientes.
+    """
+    try:
+        # Reutilizamos la lógica de consulta (sin paginación)
+        query = (
+            db.query(
+                ClienteModel.razsoc.label('cliente_nombre'),
+                ProcesoModel.nombre.label('proceso_nombre'),
+                HitoModel.nombre.label('hito_nombre'),
+                ClienteProcesoHitoModel.estado,
+                ClienteProcesoHitoModel.fecha_limite,
+                ClienteProcesoHitoModel.hora_limite,
+                ClienteProcesoHitoModel.fecha_estado,
+                ClienteProcesoHitoModel.tipo
+            )
+            .join(ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id)
+            .join(ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente)
+            .join(ProcesoModel, ClienteProcesoModel.proceso_id == ProcesoModel.id)
+            .join(HitoModel, ClienteProcesoHitoModel.hito_id == HitoModel.id)
+            .filter(ClienteProcesoHitoModel.habilitado == True)
+        )
+
+        # Filtros
+        if fecha_desde:
+            query = query.filter(ClienteProcesoHitoModel.fecha_limite >= date.fromisoformat(fecha_desde))
+        if fecha_hasta:
+            query = query.filter(ClienteProcesoHitoModel.fecha_limite <= date.fromisoformat(fecha_hasta))
+        if cliente_id:
+            query = query.filter(ClienteModel.idcliente == cliente_id)
+        if proceso_id:
+            query = query.filter(ClienteProcesoModel.proceso_id == proceso_id)
+        if hito_id:
+            query = query.filter(ClienteProcesoHitoModel.hito_id == hito_id)
+
+        # Aplicar ordenamiento predeterminado de /hitos (fecha_limite asc)
+        query = query.order_by(ClienteProcesoHitoModel.fecha_limite.asc())
+
+        resultados = query.all()
+
+        # Crear Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Status Todos los Clientes"
+
+        headers = ["Cliente", "Proceso", "Hito", "Estado", "Fecha Límite", "Hora Límite", "Fecha Estado", "Tipo"]
+        ws.append(headers)
+
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+
+        for r in resultados:
+            ws.append([
+                str(r.cliente_nombre or "").strip(),
+                str(r.proceso_nombre or "").strip(),
+                str(r.hito_nombre or "").strip(),
+                r.estado,
+                r.fecha_limite.strftime("%d/%m/%Y") if r.fecha_limite else "",
+                r.hora_limite.strftime("%H:%M") if r.hora_limite else "",
+                r.fecha_estado.strftime("%d/%m/%Y") if r.fecha_estado else "",
+                r.tipo
+            ])
+
+        # Auto-ajustar columnas
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except: pass
+            ws.column_dimensions[column].width = min(max_length + 2, 50)
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = f"status_todos_clientes_{date.today().strftime('%Y-%m-%d')}.xlsx"
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename={filename}',
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al exportar Excel: {str(e)}")

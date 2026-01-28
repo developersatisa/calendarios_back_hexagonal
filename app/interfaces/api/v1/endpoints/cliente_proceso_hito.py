@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Body, Path, Query
 from sqlalchemy.orm import Session
 from app.infrastructure.db.database import SessionLocal
 from app.infrastructure.db.repositories.cliente_proceso_hito_repository_sql import ClienteProcesoHitoRepositorySQL
+from app.application.use_cases.cliente_proceso_hito.actualizar_fecha_masivo import actualizar_fecha_masivo
+from app.interfaces.schemas.cliente_proceso_hito_api import UpdateFechaMasivoRequest
 
 from app.domain.entities.cliente_proceso_hito import ClienteProcesoHito
 
@@ -179,3 +181,23 @@ def sincronizar_cliente_proceso(
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al sincronizar cliente_proceso: {str(e)}")
+
+@router.put("/update-masivo", summary="Actualización masiva de fechas",
+    description="Actualiza la fecha límite de un hito para múltiples empresas, afectando solo a registros futuros (>= fecha_desde).")
+def update_fecha_masivo(
+    data: UpdateFechaMasivoRequest,
+    repo: ClienteProcesoHitoRepositorySQL = Depends(get_repo)
+):
+    count = actualizar_fecha_masivo(
+        repo=repo,
+        hito_id=data.hito_id,
+        cliente_ids=data.empresa_ids,
+        nueva_fecha=data.nueva_fecha,
+        fecha_desde=data.fecha_desde,
+        fecha_hasta=data.fecha_hasta
+    )
+
+    return {
+        "mensaje": "Actualización masiva completada",
+        "registros_actualizados": count
+    }

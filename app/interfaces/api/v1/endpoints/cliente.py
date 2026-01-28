@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.infrastructure.db.database import SessionLocal
 from app.infrastructure.db.repositories.cliente_repository_sql import ClienteRepositorySQL
+from app.application.use_cases.clientes.listar_clientes_por_hito import listar_clientes_por_hito
 
 router = APIRouter(prefix="/clientes", tags=["Cliente"])
 
@@ -15,6 +16,55 @@ def get_db():
 
 def get_repo(db: Session = Depends(get_db)):
     return ClienteRepositorySQL(db)
+
+@router.get("/hito/{hito_id}", summary="Listar clientes por hito",
+    description="Devuelve la lista de clientes que tienen un hito específico en su calendario, sin repetir clientes.")
+
+def get_clientes_por_hito(
+    hito_id: int = Path(..., description="ID del hito a buscar"),
+    page: Optional[int] = Query(None, ge=1, description="Página actual"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
+    sort_field: Optional[str] = Query(None, description="Campo por el cual ordenar"),
+    sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
+    repo = Depends(get_repo)
+):
+    clientes = listar_clientes_por_hito(repo, hito_id)
+    total = len(clientes)
+
+    # Aplicar ordenación si se especifica
+    if sort_field and hasattr(clientes[0] if clientes else None, sort_field):
+        reverse = sort_direction == "desc"
+
+        # Función de ordenación que maneja valores None
+        def sort_key(cliente):
+            value = getattr(cliente, sort_field, None)
+            if value is None:
+                return ""  # Los valores None van al final
+            # Si es numérico (como idcliente), convertir a número para ordenación correcta
+            if sort_field == "idcliente":
+                try:
+                    return int(value)
+                except (ValueError, TypeError):
+                    return 0
+            # Para campos de texto, convertir a minúsculas para ordenación insensible a mayúsculas
+            return str(value).lower()
+
+        clientes.sort(key=sort_key, reverse=reverse)
+
+    # Aplicar paginación
+    if page is not None and limit is not None:
+        start = (page - 1) * limit
+        end = start + limit
+        clientes = clientes[start:end]
+
+    if not clientes:
+        raise HTTPException(status_code=404, detail=f"No se encontraron clientes con el hito {hito_id}")
+
+    return {
+        "total": total,
+        "clientes": clientes
+    }
+
 @router.get("", summary="Listar clientes",
     description="Devuelve la lista completa de clientes registrados en el sistema.")
 def obtener_todos(
