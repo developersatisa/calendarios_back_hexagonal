@@ -142,6 +142,77 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             'hitos_habilitados': hitos_habilitados
         }
 
+    def actualizar_fecha_masivo(self, hito_id: int, cliente_ids: list[int], nueva_fecha: date, fecha_desde: date, fecha_hasta: date | None = None) -> int:
+        """Actualiza la fecha_limite de un hito para múltiples clientes, aplicando solo si la fecha actual >= fecha_desde"""
+        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
+        from datetime import datetime, date, timedelta
+
+        # Normalizar fecha_desde a date si es datetime o string
+        if isinstance(fecha_desde, datetime):
+            fecha_desde = fecha_desde.date()
+        elif isinstance(fecha_desde, str):
+            try:
+                fecha_desde = date.fromisoformat(fecha_desde)
+            except ValueError:
+                pass
+
+
+        # Obtener los registros que se van a actualizar
+        query = self.session.query(ClienteProcesoHitoModel).filter(
+            ClienteProcesoHitoModel.hito_id == hito_id,
+            ClienteProcesoHitoModel.fecha_limite >= fecha_desde,
+            ClienteProcesoHitoModel.cliente_proceso_id.in_(
+                self.session.query(ClienteProcesoModel.id).filter(
+                    ClienteProcesoModel.cliente_id.in_(cliente_ids)
+                )
+            )
+        )
+
+        if fecha_hasta:
+             query = query.filter(ClienteProcesoHitoModel.fecha_limite <= fecha_hasta)
+
+        registros_a_actualizar = query.all()
+
+        # Actualizar cada registro individualmente, cambiando solo el día
+        updated_count = 0
+        nuevo_dia = nueva_fecha.day
+
+        for registro in registros_a_actualizar:
+            if registro.fecha_limite:
+                try:
+                    # Mantener el año y mes original, cambiar solo el día
+                    fecha_actualizada = registro.fecha_limite.replace(day=nuevo_dia)
+
+                    # Ajustar fin de semana: si cae en sábado o domingo, mover al viernes
+                    weekday = fecha_actualizada.weekday()  # 0=Lunes ... 5=Sábado, 6=Domingo
+                    if weekday == 5:  # Sábado -> viernes (día - 1)
+                        fecha_actualizada = fecha_actualizada - timedelta(days=1)
+                    elif weekday == 6:  # Domingo -> viernes (día - 2)
+                        fecha_actualizada = fecha_actualizada - timedelta(days=2)
+
+                    registro.fecha_limite = fecha_actualizada
+                    updated_count += 1
+                except ValueError:
+                    # Si el día no es válido para ese mes (ej: 31 en febrero)
+                    # Usar el último día del mes
+                    import calendar
+                    ultimo_dia = calendar.monthrange(registro.fecha_limite.year, registro.fecha_limite.month)[1]
+                    dia_a_usar = min(nuevo_dia, ultimo_dia)
+                    fecha_actualizada = registro.fecha_limite.replace(day=dia_a_usar)
+
+                    # Ajustar fin de semana también para este caso
+                    weekday = fecha_actualizada.weekday()
+                    if weekday == 5:  # Sábado -> viernes
+                        fecha_actualizada = fecha_actualizada - timedelta(days=1)
+                    elif weekday == 6:  # Domingo -> viernes
+                        fecha_actualizada = fecha_actualizada - timedelta(days=2)
+
+                    registro.fecha_limite = fecha_actualizada
+                    updated_count += 1
+
+        self.session.commit()
+        return updated_count
+
     def actualizar(self, id: int, data: dict):
         from datetime import datetime, date
         from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel

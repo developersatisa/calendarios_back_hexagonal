@@ -31,8 +31,17 @@ def login_for_access_token(
     repo = SqlApiClienteRepository(db)
     cliente = repo.get_by_nombre(form_data.username)
 
-    if not cliente or not cliente.activo:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cliente no encontrado o inactivo")
+    if not cliente:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Usuario '{form_data.username}' no encontrado en la base de datos"
+        )
+
+    if not cliente.activo:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Usuario '{form_data.username}' está inactivo. Contacte al administrador."
+        )
 
     if not verify_password(form_data.password, cliente.hashed_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Clave incorrecta")

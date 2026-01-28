@@ -20,3 +20,8 @@ class ClienteRepository(ABC):
     def obtener_por_id(self, id: str) -> Optional[Cliente]:
         """Obtiene un cliente por su ID"""
         pass
+
+    @abstractmethod
+    def listar_por_hito_id(self, hito_id: int) -> List[Cliente]:
+        """Lista clientes que tienen un hito específico en su calendario"""
+        pass
