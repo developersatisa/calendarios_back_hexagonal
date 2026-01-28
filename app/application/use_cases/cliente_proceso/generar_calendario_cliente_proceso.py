@@ -17,15 +17,7 @@ def generar_calendario_cliente_proceso(
     generador = obtener_generador(proceso_maestro.temporalidad)
     resultado = generador.generar(data, proceso_maestro, repo, repo_hito_maestro)
 
-    # Obtener fecha_inicio del request (fecha desde donde se empieza a generar el proceso)
-    fecha_inicio_request = None
-    mes_inicio_proceso = None
-    anio_inicio_proceso = None
-    if hasattr(data, 'fecha_inicio') and data.fecha_inicio:
-        fecha_inicio_request = data.fecha_inicio
-        # El mes de inicio es el mes de la fecha_inicio del request
-        mes_inicio_proceso = fecha_inicio_request.month
-        anio_inicio_proceso = fecha_inicio_request.year
+
 
     # Crear hitos para cada ClienteProceso generado
     for cliente_proceso in resultado.get("procesos", []):
@@ -35,22 +27,8 @@ def generar_calendario_cliente_proceso(
             base_year = cliente_proceso.fecha_fin.year if cliente_proceso.fecha_fin else cliente_proceso.fecha_inicio.year
             base_month = cliente_proceso.fecha_fin.month if cliente_proceso.fecha_fin else cliente_proceso.fecha_inicio.month
 
-            # Verificar si este ClienteProceso es del mes de inicio (mes de la fecha_inicio del request)
-            es_mes_inicio = False
-            if mes_inicio_proceso and anio_inicio_proceso:
-                es_mes_inicio = (cliente_proceso.fecha_inicio.year == anio_inicio_proceso and
-                                cliente_proceso.fecha_inicio.month == mes_inicio_proceso)
-
-            # Determinar el día a usar para la fecha límite del hito
-            # Solo en el mes de inicio: si el hito tiene fecha_limite anterior a fecha_inicio del request,
-            # usar el día de la fecha_inicio del request
-            if es_mes_inicio and fecha_inicio_request and hito_data.fecha_limite and hito_data.fecha_limite < fecha_inicio_request:
-                # La fecha_limite del hito maestro es anterior a la fecha_inicio del request
-                # Y estamos en el mes de inicio: usar el día de la fecha_inicio del request
-                dia_hito = fecha_inicio_request.day
-            else:
-                # Lógica original: usar el día del hito maestro (para meses siguientes o cuando fecha_limite >= fecha_inicio)
-                dia_hito = hito_data.fecha_limite.day if hito_data.fecha_limite else 1
+    # Lógica simplificada: usar siempre el día del hito maestro
+            dia_hito = hito_data.fecha_limite.day if hito_data.fecha_limite else 1
 
             _, last_day = monthrange(base_year, base_month)
             fecha_limite_instancia = date(base_year, base_month, min(dia_hito, last_day))
