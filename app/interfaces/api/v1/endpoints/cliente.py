@@ -143,3 +143,47 @@ def get_hito(
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return cliente
+
+@router.get("/empresas_usuario/{email}", summary="Obtener empresas de un usuario",
+    description="Devuelve la lista de empresas a las que pertenece un usuario.")
+def get_empresas_usuario(
+    email: str = Path(..., description="Email del usuario a consultar"),
+    page: Optional[int] = Query(None, ge=1, description="Página actual"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
+    sort_field: Optional[str] = Query(None, description="Campo por el cual ordenar"),
+    sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
+    repo = Depends(get_repo)
+):
+    empresas = repo.listar_empresas_usuario(email)
+    total = len(empresas)
+
+    # Aplicar ordenación si se especifica
+    if sort_field and hasattr(empresas[0] if empresas else None, sort_field):
+        reverse = sort_direction == "desc"
+
+        # Función de ordenación que maneja valores None
+        def sort_key(cliente):
+            value = getattr(cliente, sort_field, None)
+            if value is None:
+                return ""  # Los valores None van al final
+            # Si es numérico (como idcliente), convertir a número para ordenación correcta
+            if sort_field == "idcliente":
+                try:
+                    return int(value)
+                except (ValueError, TypeError):
+                    return 0
+            # Para campos de texto, convertir a minúsculas para ordenación insensible a mayúsculas
+            return str(value).lower()
+
+        empresas.sort(key=sort_key, reverse=reverse)
+
+    # Aplicar paginación después de ordenar
+    if page is not None and limit is not None:
+        start = (page - 1) * limit
+        end = start + limit
+        empresas = empresas[start:end]
+
+    return {
+        "total": total,
+        "clientes": empresas
+    }

@@ -62,7 +62,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         return {
                 "username": payload.get("username", username),  # Prioriza el username explícito del SSO
                 "email": payload.get("email"),
-                "id_api_cliente": payload.get("id_api_cliente"),
+                "id_api_rol": payload.get("id_api_rol"),
                 "atisa": payload.get("atisa", False),
                 "rol": payload.get("rol")
             }

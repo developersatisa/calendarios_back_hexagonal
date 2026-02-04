@@ -8,3 +8,4 @@ class ApiClienteModel(Base):
     nombre_cliente = Column(String(255), nullable=False)
     api_key = Column(String(255), unique=True, nullable=False)
     activo = Column(Boolean, default=True)
+    email = Column(String(255), nullable=False)

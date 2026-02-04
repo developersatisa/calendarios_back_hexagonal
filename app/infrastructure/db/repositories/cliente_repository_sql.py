@@ -74,3 +74,18 @@ class ClienteRepositorySQL(ClienteRepository):
             .all()
         )
         return [self._mapear_modelo_a_entidad(r) for r in registros]
+
+    def listar_empresas_usuario(self, email: str) -> List[Cliente]:
+        from sqlalchemy import text
+        query = text("""
+            SELECT c.* FROM [ATISA_Input].dbo.clientes c
+            JOIN [ATISA_Input].dbo.clienteSubDepar csd ON c.CIF = csd.cif
+            JOIN [ATISA_Input].dbo.SubDepar sd ON sd.codSubDepar = csd.codSubDepar
+            JOIN [BI DW RRHH DEV].dbo.HDW_Cecos cc ON SUBSTRING(CAST(cc.CODIDEPAR AS VARCHAR), 24, 6) = RIGHT('000000' + CAST(sd.codSubDepar AS VARCHAR), 6) AND cc.fechafin IS NULL
+            JOIN [BI DW RRHH DEV].dbo.Persona per ON per.Numeross = cc.Numeross
+            WHERE per.email = :email
+        """)
+
+        # Ejecutar la consulta mapeando a ClienteModel
+        registros = self.session.query(ClienteModel).from_statement(query).params(email=email).all()
+        return [self._mapear_modelo_a_entidad(r) for r in registros]

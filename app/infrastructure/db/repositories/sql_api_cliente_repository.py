@@ -15,5 +15,6 @@ class SqlApiClienteRepository(ApiClienteRepository):
             id=row.id,
             nombre_cliente=row.nombre_cliente,
             hashed_key=row.api_key,
-            activo=row.activo
+            activo=row.activo,
+            email=row.nombre_cliente
         )

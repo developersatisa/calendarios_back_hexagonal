@@ -6,11 +6,12 @@ from jose import JWTError, jwt
 
 from app.infrastructure.db.database import SessionLocal
 from app.infrastructure.db.repositories.sql_api_cliente_repository import SqlApiClienteRepository
+from app.infrastructure.db.repositories.api_rol_repository_sql import SqlApiRolRepository
 from app.interfaces.api.security.auth import create_access_token, verify_password,create_refresh_token
 from app.config import settings
 from app.interfaces.schemas.token import RefreshTokenRequest, TokenResponse
 from app.infrastructure.services.sso_service import SSOService
-from app.infrastructure.services.user_mapping_service_impl import UserMappingServiceImpl
+
 
 
 router = APIRouter()
@@ -70,10 +71,34 @@ def refresh_token_view(data: RefreshTokenRequest):
         if not username:
             raise HTTPException(status_code=401, detail="Token inválido")
 
-        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        new_access_token = create_access_token(data={"sub": username}, expires_delta=access_token_expires)
+        # Preservar la información original del token
+        token_data = {
+            "sub": username,
+            "username": payload.get("username", username),
+            "email": payload.get("email"),
+            "id_api_rol": payload.get("id_api_rol"),
+            "atisa": payload.get("atisa", False),
+            "rol": payload.get("rol")
+        }
 
-        return {"access_token": new_access_token}
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        new_access_token = create_access_token(data=token_data, expires_delta=access_token_expires)
+
+        # Generar un nuevo refresh token también, para rotación (opcional pero recomendado)
+        new_refresh_token = create_refresh_token(data=token_data)
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer",
+            "user_info": {
+                "username": token_data["username"],
+                "email": token_data["email"],
+                "id_api_rol": token_data["id_api_rol"],
+                "atisa": token_data["atisa"],
+                "rol": token_data["rol"]
+            }
+        }
     except JWTError:
         raise HTTPException(status_code=401, detail="Refresh token inválido o caducado")
 
@@ -186,7 +211,7 @@ def sso_callback(
             detail=f"SSO no disponible: {str(e)}"
         )
 
-    user_mapping_service = UserMappingServiceImpl(db)
+
 
     # Intercambia el código por un token
     token_result = sso_service.get_token_from_code(code)
@@ -214,13 +239,13 @@ def sso_callback(
             detail="No se pudo obtener el email del usuario"
         )
 
-    # Obtiene el id_api_cliente basado en el email
-    id_api_cliente = user_mapping_service.get_api_cliente_id_by_email(email)
-    if not id_api_cliente:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Usuario no autorizado para acceder al sistema"
-        )
+    # Obtiene el rol y id_api_rol basado en el email
+    repo_rol = SqlApiRolRepository(db)
+    api_rol = repo_rol.buscar_por_email(email)
+
+    # Determinar rol segun si existe mapping
+    rol = "admin" if (api_rol and api_rol.admin) else "user"
+    id_api_rol = api_rol.id if api_rol else None
 
     # Crea el JWT con la información requerida
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -228,10 +253,10 @@ def sso_callback(
         data={
             "sub": username,
             "username": username,
-            "email": email,
-            "id_api_cliente": id_api_cliente,
+            "email": email,  # Email del usuario autenticado
+            "id_api_rol": id_api_rol,
             "atisa": True,
-            "rol": "admin"
+            "rol": rol
         },
         expires_delta=access_token_expires
     )
@@ -240,10 +265,11 @@ def sso_callback(
     refresh_token = create_refresh_token(
         data={
             "sub": username,
+            "username": username,
             "email": email,
-            "id_api_cliente": id_api_cliente,
+            "id_api_rol": id_api_rol,
             "atisa": True,
-            "rol": "admin"
+            "rol": rol
         }
     )
 
@@ -254,8 +280,8 @@ def sso_callback(
         "user_info": {
             "username": username,
             "email": email,
-            "id_api_cliente": id_api_cliente,
+            "id_api_rol": id_api_rol,
             "atisa": True,
-            "rol": "admin"
+            "rol": rol
         }
     }
