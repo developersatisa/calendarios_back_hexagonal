@@ -41,57 +41,6 @@ def get_repo_cph(db: Session = Depends(get_db)):
 def get_repo_cumplimiento(db: Session = Depends(get_db)):
     return ClienteProcesoHitoCumplimientoRepositorySQL(db)
 
-def get_estado_vencimiento(fecha_limite: Optional[date], estado: str, fecha_actual: date) -> str:
-    """
-    Determina el estado de vencimiento de un hito.
-    Devuelve: 'hoy', 'vencido', o 'futuro'
-    """
-    if fecha_limite is None:
-        return 'futuro'
-
-    if fecha_limite == fecha_actual:
-        return 'hoy'
-    elif fecha_limite < fecha_actual:
-        return 'vencido'
-    else:
-        return 'futuro'
-
-def is_finalizado_fuera_de_plazo(
-    cumplimientos: List,
-    fecha_limite: Optional[date],
-    hora_limite: Optional[time]
-) -> bool:
-    """
-    Determina si un hito finalizado fue cumplido fuera de plazo.
-    Compara la fecha/hora del último cumplimiento con la fecha/hora límite.
-    """
-    if not cumplimientos:
-        # Si no hay cumplimientos, considerar fuera de plazo por seguridad
-        return True
-
-    if fecha_limite is None:
-        # Si no hay fecha límite, considerar en plazo
-        return False
-
-    # Obtener el último cumplimiento
-    ultimo_cumplimiento = max(cumplimientos, key=lambda c: (c.fecha, c.hora or time.min))
-
-    # Comparar fecha y hora del cumplimiento con fecha y hora límite
-    fecha_cumplimiento = ultimo_cumplimiento.fecha
-    hora_cumplimiento = ultimo_cumplimiento.hora or time.min
-
-    # Crear datetime para comparación
-    if hora_limite:
-        limite_datetime = datetime.combine(fecha_limite, hora_limite)
-        cumplimiento_datetime = datetime.combine(fecha_cumplimiento, hora_cumplimiento)
-    else:
-        # Si no hay hora límite, solo comparar fechas (hasta el final del día)
-        limite_datetime = datetime.combine(fecha_limite, time.max)
-        cumplimiento_datetime = datetime.combine(fecha_cumplimiento, time.max)
-
-    # Si el cumplimiento fue después de la fecha límite, está fuera de plazo
-    return cumplimiento_datetime > limite_datetime
-
 def calcular_estado_hito(
     estado: str,
     fecha_limite: Optional[date],
@@ -100,35 +49,63 @@ def calcular_estado_hito(
     fecha_actual: date = None
 ) -> str:
     """
-    Calcula el estado del hito según la lógica exacta del frontend:
+    Calcula el estado del hito según la lógica unificada:
     1. Si estado = 'Finalizado':
-       - Si isFinalizadoFueraDePlazo: "Cumplido fuera de plazo"
-       - Si no: "Cumplido en plazo"
-    2. Si estado = 'Nuevo' y estadoVenc = 'hoy': "Vence hoy"
-    3. Si estadoVenc = 'vencido': "Pendiente fuera de plazo"
-    4. Si no: "Pendiente en plazo"
+       - Compara fecha/hora ultimo cumplimiento con fecha/hora limite.
+    2. Si no es 'Finalizado':
+       - Compara fecha limite con hoy.
     """
-    if fecha_actual is None:
-        fecha_actual = date.today()
+    from datetime import datetime, time as dt_time
 
-    is_finalized = estado == 'Finalizado'
-    is_nuevo = estado == 'Nuevo'
-    estado_venc = get_estado_vencimiento(fecha_limite, estado, fecha_actual)
-    finalizado_fuera = is_finalizado_fuera_de_plazo(cumplimientos, fecha_limite, hora_limite) if is_finalized else False
-    vence_hoy = is_nuevo and estado_venc == 'hoy'
+    # 1. Obtener fecha/hora del último cumplimiento si existe
+    fecha_cumplimiento = None
+    hora_cumplimiento = None
 
-    # Aplicar la lógica exacta del frontend
-    if is_finalized:
-        if finalizado_fuera:
+    if cumplimientos:
+        # Busca el cumplimiento más reciente
+        ultimo = max(cumplimientos, key=lambda c: (c.fecha, c.hora or dt_time.min))
+        fecha_cumplimiento = ultimo.fecha
+        hora_cumplimiento = ultimo.hora
+
+    if estado == 'Finalizado':
+        if not fecha_cumplimiento:
+            # Si está finalizado pero no tiene cumplimiento registrado (caso borde),
+            # devolvemos "Finalizado" o asumimos plazo.
+            # Según lógica anterior: "Finalizado" es neutro si falta info,
+            # pero el frontend suele poner "Cumplido en plazo" por defecto si no falla.
+            # Usaremos "Finalizado" para ser consistentes con status_todos_clientes
+            return "Finalizado"
+
+        if not fecha_limite:
+            return "Finalizado"
+
+        # Construir datetimes para comparación precisa
+        # Si no hay hora límite, asumimos final del día
+        deadline = datetime.combine(fecha_limite, hora_limite) if hora_limite else datetime.combine(fecha_limite, dt_time(23, 59, 59))
+
+        # Si no hay hora cumplimiento, asumimos inicio del día? O lo que venga.
+        # status_todos_clientes usaba time(0,0,0) si fecha_cumplimiento era solo date (aunque allí venía de DB join).
+        # Aquí viene de objeto ORM.
+        fulfillment_dt = datetime.combine(fecha_cumplimiento, hora_cumplimiento if hora_cumplimiento else dt_time(0, 0, 0))
+
+        if fulfillment_dt > deadline:
             return "Cumplido fuera de plazo"
         else:
             return "Cumplido en plazo"
-    elif vence_hoy:
-        return "Vence hoy"
-    elif estado_venc == 'vencido':
-        return "Pendiente fuera de plazo"
+
     else:
-        return "Pendiente en plazo"
+        # Estado Pendiente, Nuevo, En Progreso, etc.
+        if not fecha_limite:
+            return estado
+
+        today = date.today()
+
+        if fecha_limite == today:
+            return "Vence hoy"
+        elif fecha_limite < today:
+            return "Pendiente fuera de plazo"
+        else:
+            return "Pendiente en plazo"
 
 def formatear_fecha(fecha: Optional[date]) -> str:
     """Formatea una fecha a DD/MM/YYYY"""
@@ -329,7 +306,7 @@ def exportar_status_hitos_excel(
             "Cumplido fuera de plazo": PatternFill(start_color="b45309", end_color="b45309", fill_type="solid"),  # Naranja
             "Vence hoy": PatternFill(start_color="dc2626", end_color="dc2626", fill_type="solid"),  # Rojo
             "Pendiente fuera de plazo": PatternFill(start_color="ef4444", end_color="ef4444", fill_type="solid"),  # Rojo claro
-            "Pendiente en plazo": PatternFill(start_color="3b82f6", end_color="3b82f6", fill_type="solid"),  # Azul
+            "Pendiente en plazo": PatternFill(start_color="00a1de", end_color="00a1de", fill_type="solid"),  # Azul Atisa
         }
 
         # Color de texto blanco para todos los estados
@@ -383,7 +360,10 @@ def exportar_status_hitos_excel(
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+            headers={
+                "Content-Disposition": f'attachment; filename={filename}',
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
         )
 
     except ValueError as e:

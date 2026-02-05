@@ -7,7 +7,7 @@ from sqlalchemy import func, case
 import io
 try:
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment
+    from openpyxl.styles import Font, Alignment, PatternFill
 except ImportError:
     pass
 from typing import Optional, List, Dict, Any
@@ -266,14 +266,60 @@ def exportar_status_todos_excel(
                 ClienteProcesoHitoModel.fecha_limite,
                 ClienteProcesoHitoModel.hora_limite,
                 ClienteProcesoHitoModel.fecha_estado,
-                ClienteProcesoHitoModel.tipo
+                ClienteProcesoHitoModel.tipo,
+                ClienteProcesoHitoCumplimientoModel.fecha.label('cumplimiento_fecha')
             )
             .join(ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id)
             .join(ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente)
             .join(ProcesoModel, ClienteProcesoModel.proceso_id == ProcesoModel.id)
             .join(HitoModel, ClienteProcesoHitoModel.hito_id == HitoModel.id)
+            .outerjoin(ClienteProcesoHitoCumplimientoModel, ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id == ClienteProcesoHitoModel.id)
             .filter(ClienteProcesoHitoModel.habilitado == True)
         )
+
+        def calculate_status(estado_base, fecha_limite, hora_limite, fecha_cumplimiento):
+            from datetime import date as dt_date, datetime as dt_datetime
+
+            if estado_base == 'Finalizado':
+                if not fecha_cumplimiento:
+                    # Fallback logic if completion date is missing but status is Finalized
+                    # You might want to default to "Cumplido en plazo" or just return "Finalizado"
+                    # depending on business rules. For now, let's assume it was on time if no date.
+                    return "Finalizado"
+
+                # Check if fulfilled on time
+                # Build deadline datetime
+                if not fecha_limite:
+                    return "Finalizado"
+
+                deadline = dt_datetime.combine(fecha_limite, hora_limite) if hora_limite else dt_datetime.combine(fecha_limite, time(23, 59, 59))
+
+                # Assuming fulfillment is a date, we compare with the date part or combine with min time
+                # If fulfillment is a datetime, use it directly.
+                # Based on models, often fulfillment date is just a date.
+                if isinstance(fecha_cumplimiento, dt_date) and not isinstance(fecha_cumplimiento, dt_datetime):
+                     fulfillment_dt = dt_datetime.combine(fecha_cumplimiento, time(0, 0, 0))
+                else:
+                     fulfillment_dt = fecha_cumplimiento
+
+                if fulfillment_dt > deadline:
+                    return "Cumplido fuera de plazo"
+                else:
+                    return "Cumplido en plazo"
+
+            else:
+                # Not finalized (Pending, New, etc.)
+                if not fecha_limite:
+                    return estado_base
+
+                today = dt_date.today()
+
+                if fecha_limite == today:
+                    return "Vence hoy"
+                elif fecha_limite < today:
+                    return "Pendiente fuera de plazo"
+                else:
+                    return "Pendiente en plazo"
 
         # Filtros
         if fecha_desde:
@@ -304,17 +350,37 @@ def exportar_status_todos_excel(
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal="center")
 
+        # Definir colores de fondo por estado
+        colores_estado = {
+            "Cumplido en plazo": PatternFill(start_color="16a34a", end_color="16a34a", fill_type="solid"),  # Verde
+            "Cumplido fuera de plazo": PatternFill(start_color="b45309", end_color="b45309", fill_type="solid"),  # Naranja
+            "Vence hoy": PatternFill(start_color="dc2626", end_color="dc2626", fill_type="solid"),  # Rojo
+            "Pendiente fuera de plazo": PatternFill(start_color="ef4444", end_color="ef4444", fill_type="solid"),  # Rojo claro
+            "Pendiente en plazo": PatternFill(start_color="00a1de", end_color="00a1de", fill_type="solid"),  # Azul Atisa
+        }
+        font_blanco = Font(color="FFFFFF", bold=False)
+
         for r in resultados:
+            estado_calculado = calculate_status(r.estado, r.fecha_limite, r.hora_limite, r.cumplimiento_fecha)
             ws.append([
                 str(r.cliente_nombre or "").strip(),
                 str(r.proceso_nombre or "").strip(),
                 str(r.hito_nombre or "").strip(),
-                r.estado,
+                estado_calculado,
                 r.fecha_limite.strftime("%d/%m/%Y") if r.fecha_limite else "",
                 r.hora_limite.strftime("%H:%M") if r.hora_limite else "",
                 r.fecha_estado.strftime("%d/%m/%Y") if r.fecha_estado else "",
                 r.tipo
             ])
+
+            # Aplicar estilos a la fila recién agregada
+            fila_numero = ws.max_row
+            fill_color = colores_estado.get(estado_calculado)
+
+            if fill_color:
+                for cell in ws[fila_numero]:
+                    cell.fill = fill_color
+                    cell.font = font_blanco
 
         # Auto-ajustar columnas
         for col in ws.columns:
