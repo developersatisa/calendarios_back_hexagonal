@@ -133,6 +133,26 @@ def buscar_cif(
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return cliente
 
+@router.get("/departamentos", summary="Listar clientes con departamentos",
+    description="Devuelve un listado paginado de clientes que tienen departamentos asociados.")
+def obtener_con_departamentos(
+    page: Optional[int] = Query(1, ge=1, description="Página actual"),
+    limit: Optional[int] = Query(10, ge=1, le=10000, description="Cantidad de resultados por página"),
+    search: Optional[str] = Query(None, description="Buscar por CIF o Razón Social"),
+    sort_field: Optional[str] = Query(None, description="Campo por el cual ordenar"),
+    sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
+    repo: ClienteRepositorySQL = Depends(get_repo)
+):
+    offset = (page - 1) * limit
+    clientes, total = repo.listar_con_departamentos(limit, offset, search, sort_field, sort_direction)
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "clientes": clientes
+    }
+
 @router.get("/{id}", summary="Obtener cliente por ID",
     description="Devuelve la información de un cliente específico por su ID.")
 def get_hito(

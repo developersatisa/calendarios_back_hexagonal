@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from jose import JWTError, jwt
@@ -78,7 +79,8 @@ def refresh_token_view(data: RefreshTokenRequest):
             "email": payload.get("email"),
             "id_api_rol": payload.get("id_api_rol"),
             "atisa": payload.get("atisa", False),
-            "rol": payload.get("rol")
+            "rol": payload.get("rol"),
+            "ceco": payload.get("ceco")
         }
 
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -96,7 +98,8 @@ def refresh_token_view(data: RefreshTokenRequest):
                 "email": token_data["email"],
                 "id_api_rol": token_data["id_api_rol"],
                 "atisa": token_data["atisa"],
-                "rol": token_data["rol"]
+                "rol": token_data["rol"],
+                "ceco": token_data["ceco"]
             }
         }
     except JWTError:
@@ -247,31 +250,47 @@ def sso_callback(
     rol = "admin" if (api_rol and api_rol.admin) else "user"
     id_api_rol = api_rol.id if api_rol else None
 
+    # Obtener CECO
+    ceco = None
+    try:
+        # Se ha removido el campo nombre de la consulta y del token
+        query_ceco = text("""
+            SELECT sd.ceco
+            FROM [ATISA_Input].dbo.clientes c
+            JOIN [ATISA_Input].dbo.clienteSubDepar csd ON c.CIF = csd.cif
+            JOIN [ATISA_Input].dbo.SubDepar sd ON sd.codSubDepar = csd.codSubDepar
+            JOIN [BI DW RRHH DEV].dbo.HDW_Cecos cc
+                ON SUBSTRING(CAST(cc.CODIDEPAR AS VARCHAR), 24, 6) = RIGHT('000000' + CAST(sd.codSubDepar AS VARCHAR), 6)
+                AND cc.fechafin IS NULL
+            JOIN [BI DW RRHH DEV].dbo.Persona per ON per.Numeross = cc.Numeross
+            WHERE per.email = :email
+        """)
+        result = db.execute(query_ceco, {"email": email}).first()
+        if result:
+            ceco = result.ceco
+    except Exception as e:
+        # Si falla la consulta de ceco, no bloqueamos el login
+        print(f"Error obteniendo ceco para {email}: {e}")
+
     # Crea el JWT con la información requerida
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    token_data = {
+        "sub": username,
+        "username": username,
+        "email": email,  # Email del usuario autenticado
+        "id_api_rol": id_api_rol,
+        "atisa": True,
+        "rol": rol,
+        "ceco": ceco
+    }
+
     access_token = create_access_token(
-        data={
-            "sub": username,
-            "username": username,
-            "email": email,  # Email del usuario autenticado
-            "id_api_rol": id_api_rol,
-            "atisa": True,
-            "rol": rol
-        },
+        data=token_data,
         expires_delta=access_token_expires
     )
 
     # Crea también un refresh token
-    refresh_token = create_refresh_token(
-        data={
-            "sub": username,
-            "username": username,
-            "email": email,
-            "id_api_rol": id_api_rol,
-            "atisa": True,
-            "rol": rol
-        }
-    )
+    refresh_token = create_refresh_token(data=token_data)
 
     return {
         "access_token": access_token,
@@ -282,6 +301,7 @@ def sso_callback(
             "email": email,
             "id_api_rol": id_api_rol,
             "atisa": True,
-            "rol": rol
+            "rol": rol,
+            "ceco": ceco
         }
     }

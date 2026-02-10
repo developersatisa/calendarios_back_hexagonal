@@ -6,12 +6,14 @@ from app.domain.repositories.cliente_proceso_hito_cumplimiento_repository import
 from app.infrastructure.db.models.cliente_proceso_hito_cumplimiento_model import ClienteProcesoHitoCumplimientoModel
 from app.infrastructure.db.models.documentos_cumplimiento_model import DocumentoCumplimientoModel
 
+from app.infrastructure.db.models.subdepar_model import SubdeparModel
+
 class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimientoRepository):
     def __init__(self, session):
         self.session = session
 
     def guardar(self, cliente_proceso_hito_cumplimiento: ClienteProcesoHitoCumplimiento):
-        from datetime import datetime
+        from datetime import datetime, timedelta
 
         # Obtener todos los atributos de la entidad
         datos = vars(cliente_proceso_hito_cumplimiento)
@@ -22,7 +24,8 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
 
         # Auto-rellenar fecha_creacion si no está definida
         if datos.get('fecha_creacion') is None:
-            datos['fecha_creacion'] = datetime.utcnow()
+            # Ajuste de hora para compensar UTC vs Local (España)
+            datos['fecha_creacion'] = datetime.utcnow() + timedelta(hours=1)
 
         modelo = ClienteProcesoHitoCumplimientoModel(**datos)
         self.session.add(modelo)
@@ -31,7 +34,7 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
         return modelo
 
     def listar(self):
-        # Query con LEFT JOIN para contar documentos asociados a cada cumplimiento
+        # Query con LEFT JOIN para contar documentos asociados a cada cumplimiento y obtener nombre departamento
         # SQL Server requiere que todas las columnas estén en GROUP BY
         resultados = (
             self.session.query(
@@ -42,9 +45,12 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                 ClienteProcesoHitoCumplimientoModel.observacion,
                 ClienteProcesoHitoCumplimientoModel.usuario,
                 ClienteProcesoHitoCumplimientoModel.fecha_creacion,
+                ClienteProcesoHitoCumplimientoModel.ceco,
+                SubdeparModel.nombre.label('departamento'),
                 func.count(DocumentoCumplimientoModel.id).label('num_documentos')
             )
             .outerjoin(DocumentoCumplimientoModel, ClienteProcesoHitoCumplimientoModel.id == DocumentoCumplimientoModel.cumplimiento_id)
+            .outerjoin(SubdeparModel, ClienteProcesoHitoCumplimientoModel.ceco == SubdeparModel.ceco)
             .group_by(
                 ClienteProcesoHitoCumplimientoModel.id,
                 ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id,
@@ -52,12 +58,14 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                 ClienteProcesoHitoCumplimientoModel.hora,
                 ClienteProcesoHitoCumplimientoModel.observacion,
                 ClienteProcesoHitoCumplimientoModel.usuario,
-                ClienteProcesoHitoCumplimientoModel.fecha_creacion
+                ClienteProcesoHitoCumplimientoModel.fecha_creacion,
+                ClienteProcesoHitoCumplimientoModel.ceco,
+                SubdeparModel.nombre
             )
             .all()
         )
 
-        # Reconstruir los modelos con el conteo de documentos
+        # Reconstruir los modelos con el conteo de documentos y departamento
         modelos = []
         for row in resultados:
             # Crear una instancia del modelo con los datos
@@ -68,16 +76,18 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                 hora=row.hora,
                 observacion=row.observacion,
                 usuario=row.usuario,
-                fecha_creacion=row.fecha_creacion
+                fecha_creacion=row.fecha_creacion,
+                ceco=row.ceco
             )
-            # Agregar el atributo dinámico num_documentos
+            # Agregar atributos dinámicos
             cumplimiento.num_documentos = row.num_documentos or 0
+            cumplimiento.departamento = row.departamento
             modelos.append(cumplimiento)
 
         return modelos
 
     def obtener_por_id(self, id: int):
-        # Query con LEFT JOIN para contar documentos asociados
+        # Query con LEFT JOIN para contar documentos asociados y obtener departamento
         resultado = (
             self.session.query(
                 ClienteProcesoHitoCumplimientoModel.id,
@@ -87,9 +97,12 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                 ClienteProcesoHitoCumplimientoModel.observacion,
                 ClienteProcesoHitoCumplimientoModel.usuario,
                 ClienteProcesoHitoCumplimientoModel.fecha_creacion,
+                ClienteProcesoHitoCumplimientoModel.ceco,
+                SubdeparModel.nombre.label('departamento'),
                 func.count(DocumentoCumplimientoModel.id).label('num_documentos')
             )
             .outerjoin(DocumentoCumplimientoModel, ClienteProcesoHitoCumplimientoModel.id == DocumentoCumplimientoModel.cumplimiento_id)
+            .outerjoin(SubdeparModel, ClienteProcesoHitoCumplimientoModel.ceco == SubdeparModel.ceco)
             .filter(ClienteProcesoHitoCumplimientoModel.id == id)
             .group_by(
                 ClienteProcesoHitoCumplimientoModel.id,
@@ -98,7 +111,9 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                 ClienteProcesoHitoCumplimientoModel.hora,
                 ClienteProcesoHitoCumplimientoModel.observacion,
                 ClienteProcesoHitoCumplimientoModel.usuario,
-                ClienteProcesoHitoCumplimientoModel.fecha_creacion
+                ClienteProcesoHitoCumplimientoModel.fecha_creacion,
+                ClienteProcesoHitoCumplimientoModel.ceco,
+                SubdeparModel.nombre
             )
             .first()
         )
@@ -106,7 +121,7 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
         if not resultado:
             return None
 
-        # Reconstruir el modelo con el conteo de documentos
+        # Reconstruir el modelo con el conteo de documentos y departamento
         modelo = ClienteProcesoHitoCumplimientoModel(
             id=resultado.id,
             cliente_proceso_hito_id=resultado.cliente_proceso_hito_id,
@@ -114,9 +129,11 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
             hora=resultado.hora,
             observacion=resultado.observacion,
             usuario=resultado.usuario,
-            fecha_creacion=resultado.fecha_creacion
+            fecha_creacion=resultado.fecha_creacion,
+            ceco=resultado.ceco
         )
         modelo.num_documentos = resultado.num_documentos or 0
+        modelo.departamento = resultado.departamento
         return modelo
 
     def actualizar(self, id: int, data: dict):
@@ -149,7 +166,7 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
         return True
 
     def obtener_por_cliente_proceso_hito_id(self, cliente_proceso_hito_id: int):
-        # Query con LEFT JOIN para contar documentos asociados a cada cumplimiento
+        # Query con LEFT JOIN para contar documentos asociados a cada cumplimiento y obtener departamento
         # SQL Server requiere que todas las columnas estén en GROUP BY
         resultados = (
             self.session.query(
@@ -160,9 +177,12 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                 ClienteProcesoHitoCumplimientoModel.observacion,
                 ClienteProcesoHitoCumplimientoModel.usuario,
                 ClienteProcesoHitoCumplimientoModel.fecha_creacion,
+                ClienteProcesoHitoCumplimientoModel.ceco,
+                SubdeparModel.nombre.label('departamento'),
                 func.count(DocumentoCumplimientoModel.id).label('num_documentos')
             )
             .outerjoin(DocumentoCumplimientoModel, ClienteProcesoHitoCumplimientoModel.id == DocumentoCumplimientoModel.cumplimiento_id)
+            .outerjoin(SubdeparModel, ClienteProcesoHitoCumplimientoModel.ceco == SubdeparModel.ceco)
             .filter(ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id == cliente_proceso_hito_id)
             .group_by(
                 ClienteProcesoHitoCumplimientoModel.id,
@@ -171,12 +191,14 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                 ClienteProcesoHitoCumplimientoModel.hora,
                 ClienteProcesoHitoCumplimientoModel.observacion,
                 ClienteProcesoHitoCumplimientoModel.usuario,
-                ClienteProcesoHitoCumplimientoModel.fecha_creacion
+                ClienteProcesoHitoCumplimientoModel.fecha_creacion,
+                ClienteProcesoHitoCumplimientoModel.ceco,
+                SubdeparModel.nombre
             )
             .all()
         )
 
-        # Reconstruir los modelos con el conteo de documentos
+        # Reconstruir los modelos con el conteo de documentos y departamento
         modelos = []
         for row in resultados:
             cumplimiento = ClienteProcesoHitoCumplimientoModel(
@@ -186,9 +208,11 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                 hora=row.hora,
                 observacion=row.observacion,
                 usuario=row.usuario,
-                fecha_creacion=row.fecha_creacion
+                fecha_creacion=row.fecha_creacion,
+                ceco=row.ceco
             )
             cumplimiento.num_documentos = row.num_documentos or 0
+            cumplimiento.departamento = row.departamento
             modelos.append(cumplimiento)
 
         return modelos
@@ -198,7 +222,7 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
         from sqlalchemy import text
 
         query = text("""
-            SELECT cpc.id, cpc.fecha, cpc.hora, cpc.usuario, cpc.observacion, cpc.fecha_creacion,
+            SELECT cpc.id, cpc.fecha, cpc.hora, cpc.usuario, cpc.observacion, cpc.fecha_creacion, cpc.ceco, sd.nombre as departamento,
                    p.id as proceso_id, p.nombre AS proceso, h.id as hito_id, h.nombre AS hito,
                    cph.fecha_limite, cph.hora_limite,
                    COUNT(dc.id) as num_documentos
@@ -208,8 +232,9 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
             JOIN proceso p ON p.id = cp.proceso_id
             JOIN hito h ON h.id = cph.hito_id
             LEFT JOIN documentos_cumplimiento dc ON dc.cumplimiento_id = cpc.id
+            LEFT JOIN subdepar sd ON sd.ceco = cpc.ceco
             WHERE cp.cliente_id = :cliente_id
-            GROUP BY cpc.id, cpc.fecha, cpc.hora, cpc.usuario, cpc.observacion, cpc.fecha_creacion,
+            GROUP BY cpc.id, cpc.fecha, cpc.hora, cpc.usuario, cpc.observacion, cpc.fecha_creacion, cpc.ceco, sd.nombre,
                      p.id, p.nombre, h.id, h.nombre, cph.fecha_limite, cph.hora_limite
             ORDER BY cpc.id DESC
         """)

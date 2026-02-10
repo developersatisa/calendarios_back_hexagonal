@@ -11,3 +11,7 @@ class SubdeparRepository(ABC):
     @abstractmethod
     def obtener_por_id(self, id: int):
         pass
+
+    @abstractmethod
+    def obtener_por_cliente(self, id_cliente: str):
+        pass

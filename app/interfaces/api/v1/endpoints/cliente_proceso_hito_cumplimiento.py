@@ -31,7 +31,8 @@ def crear(
         "fecha": "2023-01-01",
         "hora": "14:30:00",
         "observacion": "Hito cumplido satisfactoriamente",
-        "usuario": "usuario@atisa.es"
+        "usuario": "usuario@atisa.es",
+        "ceco": "1234"
     }),
     repo = Depends(get_repo),
     repo_cliente_proceso_hito = Depends(get_repo_cliente_proceso_hito)
@@ -52,7 +53,8 @@ def crear(
             fecha=data["fecha"],
             hora=hora,
             observacion=data.get("observacion", ""),
-            usuario=data["usuario"]
+            usuario=data["usuario"],
+            ceco=data.get("ceco")
         )
         return repo.guardar(cumplimiento)
     except HTTPException:
@@ -114,6 +116,8 @@ def listar(
             "observacion": cumplimiento.observacion,
             "usuario": cumplimiento.usuario,
             "fecha_creacion": cumplimiento.fecha_creacion.isoformat() if cumplimiento.fecha_creacion else None,
+            "ceco": cumplimiento.ceco,
+            "departamento": getattr(cumplimiento, 'departamento', None),
             "num_documentos": getattr(cumplimiento, 'num_documentos', 0)
         }
         cumplimientos_dict.append(cumplimiento_dict)
@@ -142,6 +146,8 @@ def obtener(
         "observacion": cumplimiento.observacion,
         "usuario": cumplimiento.usuario,
         "fecha_creacion": cumplimiento.fecha_creacion.isoformat() if cumplimiento.fecha_creacion else None,
+        "ceco": cumplimiento.ceco,
+        "departamento": getattr(cumplimiento, 'departamento', None),
         "num_documentos": getattr(cumplimiento, 'num_documentos', 0)
     }
 
@@ -238,6 +244,8 @@ def obtener_por_cliente_proceso_hito(
                 "observacion": cumplimiento.observacion,
                 "usuario": cumplimiento.usuario,
                 "fecha_creacion": cumplimiento.fecha_creacion.isoformat() if cumplimiento.fecha_creacion else None,
+                "ceco": cumplimiento.ceco,
+                "departamento": getattr(cumplimiento, 'departamento', None),
                 "num_documentos": getattr(cumplimiento, 'num_documentos', 0)
             }
             cumplimientos_dict.append(cumplimiento_dict)
@@ -302,6 +310,8 @@ def obtener_historial_por_cliente(
                 "usuario": row.usuario,
                 "observacion": row.observacion,
                 "fecha_creacion": row.fecha_creacion.isoformat() if row.fecha_creacion else None,
+                "ceco": row.ceco,
+                "departamento": row.departamento,
                 "proceso_id": row.proceso_id,
                 "proceso": row.proceso,
                 "hito_id": row.hito_id,

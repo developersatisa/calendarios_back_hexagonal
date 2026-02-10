@@ -20,63 +20,66 @@ def get_repo(db: Session = Depends(get_db)):
     description="Devuelve la lista completa de subdepartamentos registrados en el sistema.")
 def listar(
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
-    limit: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de resultados por página"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página"),
     sort_field: Optional[str] = Query(None, description="Campo por el cual ordenar"),
     sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
     repo = Depends(get_repo)
 ):
-    subdepartamentos = repo.listar()
-    total = len(subdepartamentos)
+    subdepartamentos_raw = repo.listar()
 
-    # Aplicar ordenación si se especifica
-    if sort_field and hasattr(subdepartamentos[0] if subdepartamentos else None, sort_field):
+    # Agrupar por ceco
+    grouped_data = {}
+    for sub in subdepartamentos_raw:
+        if sub.ceco not in grouped_data:
+            grouped_data[sub.ceco] = {
+                "ceco": sub.ceco,
+                "nombre": sub.nombre, # Asumimos el nombre del primero
+                "cantidad": 0,
+                "items": []
+            }
+        grouped_data[sub.ceco]["items"].append(sub)
+        grouped_data[sub.ceco]["cantidad"] += 1
+
+    # Convertir a lista
+    subdepartamentos_grouped = list(grouped_data.values())
+    total = len(subdepartamentos_grouped)
+
+    # Aplicar ordenación si se especifica (sobre los grupos)
+    if sort_field:
         reverse = sort_direction == "desc"
 
-        # Función de ordenación que maneja valores None
-        def sort_key(subdepar):
-            value = getattr(subdepar, sort_field, None)
-            if value is None:
-                return ""  # Los valores None van al final
-
-            # Manejo especial para diferentes tipos de campos
-            if sort_field == "id":
-                try:
-                    return int(value)
-                except (ValueError, TypeError):
-                    return 0
-            elif sort_field in ["fechaini", "fechafin"]:
-                try:
-                    # Convertir fecha a timestamp para ordenación
-                    from datetime import datetime, date
-                    if isinstance(value, str):
-                        return datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()
-                    elif isinstance(value, date):
-                        return datetime.combine(value, datetime.min.time()).timestamp()
-                    elif hasattr(value, 'timestamp'):
-                        return value.timestamp()
-                    else:
-                        return 0
-                except (ValueError, TypeError):
-                    return 0
+        def sort_key(group):
+            # Si el campo existe en el nivel superior del grupo (ceco, nombre, cantidad)
+            if sort_field in group:
+                value = group[sort_field]
+            # Si no, intentamos buscar en el primer item (limitado)
+            elif group["items"] and hasattr(group["items"][0], sort_field):
+                value = getattr(group["items"][0], sort_field, None)
             else:
-                # Para campos de texto (codidepar, ceco, codSubDepar, nombre),
-                # convertir a minúsculas para ordenación insensible a mayúsculas
-                return str(value).lower()
+                value = None
 
-        subdepartamentos.sort(key=sort_key, reverse=reverse)
+            if value is None:
+                return ""
+
+            # Manejo de tipos para ordenación
+            if isinstance(value, (int, float)):
+                return value
+            return str(value).lower()
+
+        subdepartamentos_grouped.sort(key=sort_key, reverse=reverse)
 
     # Aplicar paginación después de ordenar
     if page is not None and limit is not None:
         start = (page - 1) * limit
         end = start + limit
-        subdepartamentos = subdepartamentos[start:end]
+        subdepartamentos_grouped = subdepartamentos_grouped[start:end]
 
-    if not subdepartamentos:
+    if not subdepartamentos_grouped and page == 1:
         raise HTTPException(status_code=404, detail="No se encontraron subdepartamentos")
 
     return {
         "total": total,
-        "subdepartamentos": subdepartamentos
+        "subdepartamentos": subdepartamentos_grouped
     }
 
 @router.get("/subdepartamentos/{id}", tags=["Subdepartamentos"], summary="Obtener subdepartamento por ID",
@@ -89,3 +92,14 @@ def obtener_por_id(
     if not subdepartamento:
         raise HTTPException(status_code=404, detail="Subdepartamento no encontrado")
     return subdepartamento
+
+@router.get("/subdepartamentos/cliente/{id_cliente}", tags=["Subdepartamentos"], summary="Obtener subdepartamentos por cliente",
+    description="Devuelve la lista de subdepartamentos (ceco y nombre) asociados a un cliente específico.")
+def obtener_por_cliente(
+    id_cliente: str = Path(..., description="ID del cliente a consultar"),
+    repo = Depends(get_repo)
+):
+    subdepartamentos = repo.obtener_por_cliente(id_cliente)
+    if not subdepartamentos:
+        raise HTTPException(status_code=404, detail=f"No se encontraron subdepartamentos para el cliente {id_cliente}")
+    return subdepartamentos
