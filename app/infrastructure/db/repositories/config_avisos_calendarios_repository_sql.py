@@ -16,6 +16,10 @@ class ConfigAvisoCalendarioRepositorySQL(ConfigAvisoCalendarioRepository):
         registro = self.session.query(ConfigAvisoCalendarioModel).filter(ConfigAvisoCalendarioModel.id == id).first()
         return self._mapear_modelo_a_entidad(registro) if registro else None
 
+    def obtener_por_cod_sub_depar(self, cod_sub_depar: str) -> Optional[ConfigAvisoCalendario]:
+        registro = self.session.query(ConfigAvisoCalendarioModel).filter(ConfigAvisoCalendarioModel.codSubDepar == cod_sub_depar).first()
+        return self._mapear_modelo_a_entidad(registro) if registro else None
+
     def guardar(self, config_aviso: ConfigAvisoCalendario) -> ConfigAvisoCalendario:
         datos = vars(config_aviso)
         if datos.get('id') is None:

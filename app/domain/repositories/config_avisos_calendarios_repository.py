@@ -22,3 +22,7 @@ class ConfigAvisoCalendarioRepository(ABC):
     @abstractmethod
     def eliminar(self, id: int) -> bool:
         pass
+
+    @abstractmethod
+    def obtener_por_cod_sub_depar(self, cod_sub_depar: str) -> Optional[ConfigAvisoCalendario]:
+        pass

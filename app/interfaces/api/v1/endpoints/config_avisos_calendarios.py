@@ -30,6 +30,13 @@ def obtener(id: int = Path(..., description="ID de la configuración"), repo: Co
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
     return config
 
+@router.get("/subdepar/{cod_sub_depar}", summary="Obtener configuración por Código Sub-Departamento", response_model=ConfigAvisoCalendarioResponse)
+def obtener_por_codigo(cod_sub_depar: str, repo: ConfigAvisoCalendarioRepositorySQL = Depends(get_repo)):
+    config = repo.obtener_por_cod_sub_depar(cod_sub_depar)
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    return config
+
 @router.post("", summary="Crear configuración de avisos", response_model=ConfigAvisoCalendarioResponse)
 def crear(
     config_in: ConfigAvisoCalendarioCreate,
