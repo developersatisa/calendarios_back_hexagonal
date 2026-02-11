@@ -39,7 +39,7 @@ def crear(payload: MetadatosAreaCreate, repo: MetadatosAreaRepository = Depends(
     try:
         result = use_case.execute(
             id_metadato=payload.id_metadato,
-            codigo_ceco=payload.codigo_ceco
+            codSubDepar=payload.codSubDepar
         )
         return result
     except ValueError as e:

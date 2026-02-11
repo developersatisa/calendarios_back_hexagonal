@@ -6,4 +6,4 @@ class MetadatosAreaModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     id_metadato = Column(Integer, ForeignKey("metadatos.id"), nullable=False)
-    codigo_ceco = Column(String(50), nullable=False)
+    codSubDepar = Column(String(50), nullable=False)

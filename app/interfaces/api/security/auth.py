@@ -65,7 +65,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
                 "id_api_rol": payload.get("id_api_rol"),
                 "atisa": payload.get("atisa", False),
                 "rol": payload.get("rol"),
-                "ceco": payload.get("ceco")
+                "codSubDepar": payload.get("codSubDepar")
             }
     except JWTError:
         raise credentials_exception

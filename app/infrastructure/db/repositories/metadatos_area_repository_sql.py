@@ -19,7 +19,7 @@ class SQLMetadatosAreaRepository(MetadatosAreaRepository):
     def save(self, data: MetadatosArea) -> MetadatosArea:
         modelo = MetadatosAreaModel(
             id_metadato=data.id_metadato,
-            codigo_ceco=data.codigo_ceco
+            codSubDepar=data.codSubDepar
         )
         self.session.add(modelo)
         self.session.commit()
@@ -40,15 +40,15 @@ class SQLMetadatosAreaRepository(MetadatosAreaRepository):
         return MetadatosArea(
             id=m.id,
             id_metadato=m.id_metadato,
-            codigo_ceco=m.codigo_ceco
+            codSubDepar=m.codSubDepar
         )
 
-    def get_by_codigo_ceco_list(self, codigos_ceco: List[str]) -> List[MetadatosArea]:
-        if not codigos_ceco:
+    def get_by_cod_subdepar_list(self, codigos_subdepar: List[str]) -> List[MetadatosArea]:
+        if not codigos_subdepar:
             return []
 
         rows = self.session.query(MetadatosAreaModel).filter(
-            MetadatosAreaModel.codigo_ceco.in_(codigos_ceco)
+            MetadatosAreaModel.codSubDepar.in_(codigos_subdepar)
         ).all()
 
         return [MetadatosAreaMapper.to_entity(row) for row in rows]

@@ -148,7 +148,7 @@ class ClienteRepositorySQL(ClienteRepository):
             # SQL Server con pyodbc no soporta binding de tuplas directamente
             placeholders = ', '.join([f':id{i}' for i in range(len(ids_clientes))])
             dept_query_str = f"""
-                SELECT c.idcliente, sd.ceco, sd.nombre,
+                SELECT c.idcliente, sd.codSubDepar, sd.nombre,
                        cac.id as config_id,
                        CAST(cac.aviso_vence_hoy AS INT) as aviso_vence_hoy,
                        cac.temporicidad_vence_hoy,
@@ -176,9 +176,9 @@ class ClienteRepositorySQL(ClienteRepository):
                 JOIN [BI DW RRHH DEV].dbo.Persona per ON per.Numeross = cc.Numeross
                 LEFT JOIN config_avisos_calendarios cac
                     ON cac.cliente_id COLLATE DATABASE_DEFAULT = c.idcliente COLLATE DATABASE_DEFAULT
-                    AND cac.ceco COLLATE DATABASE_DEFAULT = sd.ceco COLLATE DATABASE_DEFAULT
+                    AND cac.codSubDepar COLLATE DATABASE_DEFAULT = sd.codSubDepar COLLATE DATABASE_DEFAULT
                 WHERE c.idcliente IN ({placeholders})
-                GROUP BY c.idcliente, sd.ceco, sd.nombre,
+                GROUP BY c.idcliente, sd.codSubDepar, sd.nombre,
                          cac.id, cac.aviso_vence_hoy, cac.temporicidad_vence_hoy, cac.tiempo_vence_hoy, cac.hora_vence_hoy,
                          cac.aviso_proximo_vencimiento, cac.temporicidad_proximo_vencimiento, cac.tiempo_proximo_vencimiento, cac.hora_proximo_vencimiento, cac.dias_proximo_vencimiento,
                          cac.aviso_vencido, cac.temporicidad_vencido, cac.tiempo_vencido, cac.hora_vencido,
@@ -199,7 +199,7 @@ class ClienteRepositorySQL(ClienteRepository):
                     dept_map[row.idcliente] = []
 
                 dept_data = {
-                    "ceco": row.ceco,
+                    "codSubDepar": row.codSubDepar,
                     "nombre": row.nombre,
                     "configuracion": None
                 }

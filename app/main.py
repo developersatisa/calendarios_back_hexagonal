@@ -41,7 +41,8 @@ from app.interfaces.api.v1.endpoints import (
     exportar_status_hitos,
     status_todos_clientes,
     persona,
-    api_rol
+    api_rol,
+    config_avisos_calendarios
 )
 
 
@@ -112,6 +113,7 @@ app.include_router(exportar_status_hitos.router, dependencies=[Depends(get_curre
 app.include_router(status_todos_clientes.router, dependencies=[Depends(get_current_user)])
 app.include_router(persona.router,              dependencies=[Depends(get_current_user)])
 app.include_router(api_rol.router,            dependencies=[Depends(get_current_user)])
+app.include_router(config_avisos_calendarios.router, dependencies=[Depends(get_current_user)])
 
 
 configure_websockets(app)

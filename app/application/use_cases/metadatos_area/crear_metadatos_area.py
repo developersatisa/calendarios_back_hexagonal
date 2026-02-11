@@ -7,7 +7,7 @@ class CrearMetadatosAreaUseCase:
         self.metadatos_area_repo = metadatos_area_repo
         self.metadato_repo = metadato_repo
 
-    def execute(self, id_metadato: int, codigo_ceco: str) -> MetadatosArea:
+    def execute(self, id_metadato: int, codSubDepar: str) -> MetadatosArea:
         metadato = self.metadato_repo.get_by_id(id_metadato)
         if not metadato:
             raise ValueError("El metadato no existe")
@@ -17,6 +17,6 @@ class CrearMetadatosAreaUseCase:
         entidad = MetadatosArea(
             id=None,
             id_metadato=id_metadato,
-            codigo_ceco=codigo_ceco
+            codSubDepar=codSubDepar
         )
         return self.metadatos_area_repo.save(entidad)

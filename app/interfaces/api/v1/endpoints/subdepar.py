@@ -27,18 +27,18 @@ def listar(
 ):
     subdepartamentos_raw = repo.listar()
 
-    # Agrupar por ceco
+    # Agrupar por codSubDepar
     grouped_data = {}
     for sub in subdepartamentos_raw:
-        if sub.ceco not in grouped_data:
-            grouped_data[sub.ceco] = {
-                "ceco": sub.ceco,
+        if sub.codSubDepar not in grouped_data:
+            grouped_data[sub.codSubDepar] = {
+                "codSubDepar": sub.codSubDepar,
                 "nombre": sub.nombre, # Asumimos el nombre del primero
                 "cantidad": 0,
                 "items": []
             }
-        grouped_data[sub.ceco]["items"].append(sub)
-        grouped_data[sub.ceco]["cantidad"] += 1
+        grouped_data[sub.codSubDepar]["items"].append(sub)
+        grouped_data[sub.codSubDepar]["cantidad"] += 1
 
     # Convertir a lista
     subdepartamentos_grouped = list(grouped_data.values())
@@ -49,7 +49,7 @@ def listar(
         reverse = sort_direction == "desc"
 
         def sort_key(group):
-            # Si el campo existe en el nivel superior del grupo (ceco, nombre, cantidad)
+            # Si el campo existe en el nivel superior del grupo (codSubDepar, nombre, cantidad)
             if sort_field in group:
                 value = group[sort_field]
             # Si no, intentamos buscar en el primer item (limitado)
@@ -94,7 +94,7 @@ def obtener_por_id(
     return subdepartamento
 
 @router.get("/subdepartamentos/cliente/{id_cliente}", tags=["Subdepartamentos"], summary="Obtener subdepartamentos por cliente",
-    description="Devuelve la lista de subdepartamentos (ceco y nombre) asociados a un cliente específico.")
+    description="Devuelve la lista de subdepartamentos (codSubDepar y nombre) asociados a un cliente específico.")
 def obtener_por_cliente(
     id_cliente: str = Path(..., description="ID del cliente a consultar"),
     repo = Depends(get_repo)

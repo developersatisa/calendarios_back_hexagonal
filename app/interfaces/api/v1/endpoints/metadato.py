@@ -7,7 +7,7 @@ from app.domain.entities.metadato import Metadato
 from app.infrastructure.db.repositories.metadato_repositoy_sql import SQLMetadatoRepository
 from app.infrastructure.db.repositories.metadatos_area_repository_sql import SQLMetadatosAreaRepository
 from app.application.use_cases.metadato.obtener_metadatos_visibles import ObtenerMetadatosVisibles
-from app.infrastructure.services.empleado_ceco_provider import EmpleadoCecoProvider
+from app.infrastructure.services.empleado_subdepar_provider import EmpleadoSubDeparProvider
 
 router = APIRouter(prefix="/metadatos", tags=["Metadatos"])
 
@@ -73,8 +73,8 @@ def obtener_metadatos_visibles(
 ):
     metadato_repo = SQLMetadatoRepository(db)
     area_repo = SQLMetadatosAreaRepository(db)
-    ceco_provider = EmpleadoCecoProvider(db)
-    use_case = ObtenerMetadatosVisibles(metadato_repo, area_repo, ceco_provider)
+    subdepar_provider = EmpleadoSubDeparProvider(db)
+    use_case = ObtenerMetadatosVisibles(metadato_repo, area_repo, subdepar_provider)
     return use_case.execute(email)
 
 @router.get("/{metadato_id}", response_model=MetadatoRead)

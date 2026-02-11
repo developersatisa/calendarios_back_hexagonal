@@ -1,14 +1,14 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-class EmpleadoCecoProvider:
+class EmpleadoSubDeparProvider:
 
     def __init__(self, db: Session):
         self.db = db
 
-    def obtener_cecos_por_email(self, email: str) -> list[str]:
+    def obtener_subdepar_por_email(self, email: str) -> list[str]:
         sql = text("""
-        SELECT s.ceco
+        SELECT s.codSubDepar
         FROM [ATISA_Input].[dbo].[subDepar] s
         JOIN [BI DW RRHH DEV].[dbo].[HDW_Cecos] c
             ON s.codidepar = c.CODIDEPAR
@@ -20,4 +20,4 @@ class EmpleadoCecoProvider:
         """)
 
         result = self.db.execute(sql, {"email": email})
-        return [row.ceco for row in result.fetchall()]
+        return [row.codSubDepar for row in result.fetchall()]

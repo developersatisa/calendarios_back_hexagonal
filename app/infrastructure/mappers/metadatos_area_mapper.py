@@ -8,7 +8,7 @@ class MetadatosAreaMapper:
         return MetadatosArea(
             id=model.id,
             id_metadato=model.id_metadato,
-            codigo_ceco=model.codigo_ceco
+            codSubDepar=model.codSubDepar
         )
 
     @staticmethod
@@ -16,5 +16,5 @@ class MetadatosAreaMapper:
         return MetadatosAreaModel(
             id=entity.id,
             id_metadato=entity.id_metadato,
-            codigo_ceco=entity.codigo_ceco
+            codSubDepar=entity.codSubDepar
         )

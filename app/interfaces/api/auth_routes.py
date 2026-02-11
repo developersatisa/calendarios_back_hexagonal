@@ -80,7 +80,7 @@ def refresh_token_view(data: RefreshTokenRequest):
             "id_api_rol": payload.get("id_api_rol"),
             "atisa": payload.get("atisa", False),
             "rol": payload.get("rol"),
-            "ceco": payload.get("ceco")
+            "codSubDepar": payload.get("codSubDepar")
         }
 
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -99,7 +99,7 @@ def refresh_token_view(data: RefreshTokenRequest):
                 "id_api_rol": token_data["id_api_rol"],
                 "atisa": token_data["atisa"],
                 "rol": token_data["rol"],
-                "ceco": token_data["ceco"]
+                "codSubDepar": token_data["codSubDepar"]
             }
         }
     except JWTError:
@@ -251,11 +251,11 @@ def sso_callback(
     id_api_rol = api_rol.id if api_rol else None
 
     # Obtener CECO
-    ceco = None
+    codSubDepar = None
     try:
         # Se ha removido el campo nombre de la consulta y del token
-        query_ceco = text("""
-            SELECT sd.ceco
+        query_codSubDepar = text("""
+            SELECT sd.codSubDepar
             FROM [ATISA_Input].dbo.clientes c
             JOIN [ATISA_Input].dbo.clienteSubDepar csd ON c.CIF = csd.cif
             JOIN [ATISA_Input].dbo.SubDepar sd ON sd.codSubDepar = csd.codSubDepar
@@ -265,12 +265,12 @@ def sso_callback(
             JOIN [BI DW RRHH DEV].dbo.Persona per ON per.Numeross = cc.Numeross
             WHERE per.email = :email
         """)
-        result = db.execute(query_ceco, {"email": email}).first()
+        result = db.execute(query_codSubDepar, {"email": email}).first()
         if result:
-            ceco = result.ceco
+            codSubDepar = result.codSubDepar
     except Exception as e:
         # Si falla la consulta de ceco, no bloqueamos el login
-        print(f"Error obteniendo ceco para {email}: {e}")
+        print(f"Error obteniendo codSubDepar para {email}: {e}")
 
     # Crea el JWT con la información requerida
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -281,7 +281,7 @@ def sso_callback(
         "id_api_rol": id_api_rol,
         "atisa": True,
         "rol": rol,
-        "ceco": ceco
+        "codSubDepar": codSubDepar
     }
 
     access_token = create_access_token(
@@ -302,6 +302,6 @@ def sso_callback(
             "id_api_rol": id_api_rol,
             "atisa": True,
             "rol": rol,
-            "ceco": ceco
+            "codSubDepar": codSubDepar
         }
     }

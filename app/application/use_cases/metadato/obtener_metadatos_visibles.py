@@ -2,31 +2,31 @@ from typing import List
 from app.domain.entities.metadato import Metadato
 from app.domain.repositories.metadato_repository import MetadatoRepository
 from app.domain.repositories.metadatos_area_repository import MetadatosAreaRepository
-from app.infrastructure.services.empleado_ceco_provider import EmpleadoCecoProvider
+from app.infrastructure.services.empleado_subdepar_provider import EmpleadoSubDeparProvider
 
 class ObtenerMetadatosVisibles:
     def __init__(
         self,
         metadato_repo: MetadatoRepository,
         area_repo: MetadatosAreaRepository,
-        ceco_provider: EmpleadoCecoProvider
+        subdepar_provider: EmpleadoSubDeparProvider
     ):
         self.metadato_repo = metadato_repo
         self.area_repo = area_repo
-        self.ceco_provider = ceco_provider
+        self.subdepar_provider = subdepar_provider
 
     def execute(self, email: str) -> List[Metadato]:
-        cecos = self.ceco_provider.obtener_cecos_por_email(email)
+        subdepars = self.subdepar_provider.obtener_subdepar_por_email(email)
 
         globales = [m for m in self.metadato_repo.get_all() if m.global_ == 1]
-        areas = self.area_repo.get_by_codigo_ceco_list(cecos)
+        areas = self.area_repo.get_by_cod_subdepar_list(subdepars)
 
         # Ahora sí, sacamos los metadatos por área
-        metadatos_ceco = [
+        metadatos_subdepar = [
             self.metadato_repo.get_by_id(area.id_metadato)
             for area in areas
             if area.id_metadato is not None
         ]
 
-        todos = {m.id: m for m in (globales + [m for m in metadatos_ceco if m])}.values()
+        todos = {m.id: m for m in (globales + [m for m in metadatos_subdepar if m])}.values()
         return list(todos)
