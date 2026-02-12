@@ -75,6 +75,7 @@ def _build_base_query(db: Session, subquery_ultimo_cumplimiento):
 
             # Información del hito maestro
             HitoModel.nombre.label('hito_nombre'),
+            HitoModel.obligatorio.label('hito_obligatorio'),
 
             # Último cumplimiento (si existe)
             ClienteProcesoHitoCumplimientoModel.id.label('cumplimiento_id'),
@@ -119,6 +120,7 @@ def _build_base_query(db: Session, subquery_ultimo_cumplimiento):
             ClienteProcesoModel.proceso_id,
             ProcesoModel.nombre,
             HitoModel.nombre,
+            HitoModel.obligatorio,
             ClienteProcesoHitoCumplimientoModel.id,
             ClienteProcesoHitoCumplimientoModel.fecha,
             ClienteProcesoHitoCumplimientoModel.hora,
@@ -335,7 +337,7 @@ def exportar_status_todos_excel(
         ws = wb.active
         ws.title = "Status Todos los Clientes"
 
-        headers = ["Cliente", "Proceso", "Hito", "Estado", "Fecha Límite", "Hora Límite", "Fecha Actualización", "Tipo"]
+        headers = ["Cliente", "Proceso", "Hito", "Estado", "Fecha Límite", "Hora Límite", "Fecha Actualización", "Tipo", "Obligatorio"]
         ws.append(headers)
 
         # Estilo headers
@@ -365,7 +367,8 @@ def exportar_status_todos_excel(
                 r.fecha_limite.strftime("%d/%m/%Y") if r.fecha_limite else "",
                 r.hora_limite.strftime("%H:%M") if r.hora_limite else "",
                 r.fecha_estado.strftime("%d/%m/%Y, %H:%M") if r.fecha_estado else "",
-                r.tipo
+                r.tipo,
+                "Sí" if getattr(r, 'hito_obligatorio', 0) == 1 else "No"
             ])
 
             # Aplicar color a la fila
