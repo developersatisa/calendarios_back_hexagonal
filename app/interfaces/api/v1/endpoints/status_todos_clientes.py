@@ -83,6 +83,7 @@ def _build_base_query(db: Session, subquery_ultimo_cumplimiento):
             ClienteProcesoHitoCumplimientoModel.hora.label('cumplimiento_hora'),
             ClienteProcesoHitoCumplimientoModel.observacion.label('cumplimiento_observacion'),
             ClienteProcesoHitoCumplimientoModel.usuario.label('cumplimiento_usuario'),
+            ClienteProcesoHitoCumplimientoModel.codSubDepar.label('cumplimiento_codSubDepar'),
             ClienteProcesoHitoCumplimientoModel.fecha_creacion.label('cumplimiento_fecha_creacion'),
 
             # Número de documentos del último cumplimiento
@@ -126,6 +127,7 @@ def _build_base_query(db: Session, subquery_ultimo_cumplimiento):
             ClienteProcesoHitoCumplimientoModel.hora,
             ClienteProcesoHitoCumplimientoModel.observacion,
             ClienteProcesoHitoCumplimientoModel.usuario,
+            ClienteProcesoHitoCumplimientoModel.codSubDepar,
             ClienteProcesoHitoCumplimientoModel.fecha_creacion
         )
     )
@@ -305,47 +307,106 @@ def get_status_todos_clientes(
 @router.get("/exportar-excel", summary="Exportar status de todos los clientes a Excel",
             description="Genera y descarga un archivo Excel con el estado de los hitos filtrados, utilizando colores para indicar el estado de cumplimiento.")
 def exportar_status_todos_excel(
-    fecha_limite_desde: Optional[str] = Query(None, description="Filtrar por fecha límite desde (YYYY-MM-DD)"),
-    fecha_limite_hasta: Optional[str] = Query(None, description="Filtrar por fecha límite hasta (YYYY-MM-DD)"),
+    fecha_limite_desde: Optional[str] = Query(None, alias="fecha_desde", description="Filtrar por fecha límite desde (YYYY-MM-DD)"),
+    fecha_limite_hasta: Optional[str] = Query(None, alias="fecha_hasta", description="Filtrar por fecha límite hasta (YYYY-MM-DD)"),
     cliente_id: Optional[str] = Query(None, description="Filtrar por ID de cliente"),
-    proceso_id: Optional[int] = Query(None, description="Filtrar por ID de proceso"),
+    proceso_nombre: Optional[str] = Query(None, description="Filtrar por nombre del proceso"),
     hito_id: Optional[int] = Query(None, description="Filtrar por ID de hito"),
+    estados: Optional[str] = Query(None, description="Filtrar por estados (separados por coma): cumplido_en_plazo,cumplido_fuera_plazo,vence_hoy,pendiente_fuera_plazo,pendiente_en_plazo"),
+    tipos: Optional[str] = Query(None, description="Filtrar por tipos (separados por coma): Atisa,Cliente,Terceros"),
+    search_term: Optional[str] = Query(None, description="Búsqueda de texto libre en proceso_nombre y hito_nombre"),
     db: Session = Depends(get_db)
 ):
     if Workbook is None:
         raise HTTPException(status_code=500, detail="La librería 'openpyxl' no está instalada.")
 
     try:
-        # 1. Preparar Query (misma lógica que endpoint principal)
+        # 1. Preparar Query
         subquery = _get_subquery_ultimo_cumplimiento(db)
         query = _build_base_query(db, subquery)
 
-        # 2. Aplicar Filtros (mismos filtros)
-        # Nota: renombro los params en la firma para coincidir con la función _apply_filters
-        # En el código original se llamaban 'fecha_desde'/'fecha_hasta' en el endpoint de Excel pero 'fecha_limite_desde' en el otro.
-        # He estandarizado a 'fecha_limite_desde/hasta' en ambos para consistencia.
-        query = _apply_filters(query, fecha_limite_desde, fecha_limite_hasta, cliente_id, proceso_id, hito_id)
+        # 2. Aplicar filtros básicos
+        query = _apply_filters(query, fecha_limite_desde, fecha_limite_hasta, cliente_id, None, hito_id)
 
-        # 3. Aplicar Ordenamiento por defecto
+        # 3. Filtrar por nombre de proceso (búsqueda parcial)
+        if proceso_nombre:
+            query = query.filter(ProcesoModel.nombre.ilike(f"%{proceso_nombre}%"))
+
+        # 4. Filtrar por tipos
+        if tipos:
+            tipos_list = [t.strip() for t in tipos.split(",")]
+            query = query.filter(ClienteProcesoHitoModel.tipo.in_(tipos_list))
+
+        # 5. Búsqueda de texto libre
+        if search_term:
+            search_pattern = f"%{search_term}%"
+            query = query.filter(
+                (ProcesoModel.nombre.ilike(search_pattern)) |
+                (HitoModel.nombre.ilike(search_pattern))
+            )
+
+        # 6. Ordenar
         query = query.order_by(ClienteProcesoHitoModel.fecha_limite.asc())
 
-        # 4. Ejecutar (sin paginación)
+        # 7. Ejecutar
         resultados = query.all()
 
-        # 5. Generar Excel
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Status Todos los Clientes"
+        # 8. Filtrar por estados calculados (post-query)
+        if estados:
+            estados_list = [e.strip() for e in estados.split(",")]
+            filtered_results = []
+            for r in resultados:
+                estado_calc = _calculate_excel_status(r.estado, r.fecha_limite, r.hora_limite, r.cumplimiento_fecha)
+                # Normalizar a snake_case
+                estado_key = estado_calc.lower().replace(" ", "_")
+                if estado_key in estados_list:
+                    filtered_results.append(r)
+            resultados = filtered_results
 
-        headers = ["Cliente", "Proceso", "Hito", "Estado", "Fecha Límite", "Hora Límite", "Fecha Actualización", "Tipo", "Obligatorio"]
-        ws.append(headers)
+        # 9. Generar Excel con dos hojas
+        wb = Workbook()
+
+        # PRIMERA HOJA: Filtros Aplicados
+        ws_filtros = wb.active
+        ws_filtros.title = "Filtros Aplicados"
+
+        # Título
+        ws_filtros.append(["FILTROS APLICADOS"])
+        ws_filtros["A1"].font = Font(size=14, bold=True)
+        ws_filtros.append(["-" * 50])
+        ws_filtros.append([])
+
+        # Detalles de filtros
+        ws_filtros.append(["Cliente:", cliente_id or "Todos"])
+        ws_filtros.append(["Proceso:", proceso_nombre or "Todos"])
+        ws_filtros.append(["Hito ID:", str(hito_id) if hito_id else "Todos"])
+        ws_filtros.append(["Fecha Desde:", fecha_limite_desde or "Sin filtro"])
+        ws_filtros.append(["Fecha Hasta:", fecha_limite_hasta or "Sin filtro"])
+        ws_filtros.append(["Estados:", estados.replace(",", ", ") if estados else "Todos"])
+        ws_filtros.append(["Tipos:", tipos.replace(",", ", ") if tipos else "Todos"])
+        ws_filtros.append(["Búsqueda:", search_term or "Sin búsqueda"])
+        ws_filtros.append([])
+        ws_filtros.append(["Fecha de Generación:", datetime.now().strftime("%d/%m/%Y %H:%M:%S")])
+        ws_filtros.append(["Total de Registros:", len(resultados)])
+
+        # Ajustar ancho de columnas
+        ws_filtros.column_dimensions["A"].width = 25
+        ws_filtros.column_dimensions["B"].width = 50
+
+        # SEGUNDA HOJA: Datos
+        ws_datos = wb.create_sheet("Datos")
+
+        headers = ["Cliente", "Proceso", "Hito", "Fecha Límite", "Hora Límite", "Estado",
+                   "Fecha Estado", "Tipo", "Obligatorio", "Observaciones"]
+        ws_datos.append(headers)
 
         # Estilo headers
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
+        for cell in ws_datos[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="1f4788", end_color="1f4788", fill_type="solid")
             cell.alignment = Alignment(horizontal="center")
 
-        # Colores
+        # Colores por estado
         colores_estado = {
             "Cumplido en plazo": PatternFill(start_color="16a34a", end_color="16a34a", fill_type="solid"),
             "Cumplido fuera de plazo": PatternFill(start_color="b45309", end_color="b45309", fill_type="solid"),
@@ -359,28 +420,29 @@ def exportar_status_todos_excel(
         for r in resultados:
             estado_calculado = _calculate_excel_status(r.estado, r.fecha_limite, r.hora_limite, r.cumplimiento_fecha)
 
-            ws.append([
+            ws_datos.append([
                 str(r.cliente_nombre or "").strip(),
                 str(r.proceso_nombre or "").strip(),
                 str(r.hito_nombre or "").strip(),
-                estado_calculado,
                 r.fecha_limite.strftime("%d/%m/%Y") if r.fecha_limite else "",
                 r.hora_limite.strftime("%H:%M") if r.hora_limite else "",
-                r.fecha_estado.strftime("%d/%m/%Y, %H:%M") if r.fecha_estado else "",
+                estado_calculado,
+                r.fecha_estado.strftime("%d/%m/%Y %H:%M") if r.fecha_estado else "",
                 r.tipo,
-                "Sí" if getattr(r, 'hito_obligatorio', 0) == 1 else "No"
+                "Sí" if getattr(r, 'hito_obligatorio', 0) == 1 else "No",
+                str(r.cumplimiento_observacion or "").strip() if r.cumplimiento_id else ""
             ])
 
-            # Aplicar color a la fila
-            fila_numero = ws.max_row
+            # Aplicar color
+            fila_numero = ws_datos.max_row
             fill_color = colores_estado.get(estado_calculado)
             if fill_color:
-                for cell in ws[fila_numero]:
+                for cell in ws_datos[fila_numero]:
                     cell.fill = fill_color
                     cell.font = font_blanco
 
         # Auto-ajustar columnas
-        for col in ws.columns:
+        for col in ws_datos.columns:
             max_length = 0
             column_letter = col[0].column_letter
             for cell in col:
@@ -390,7 +452,7 @@ def exportar_status_todos_excel(
                         max_length = len(val)
                 except:
                     pass
-            ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+            ws_datos.column_dimensions[column_letter].width = min(max_length + 2, 50)
 
         output = io.BytesIO()
         wb.save(output)
