@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
 from sqlalchemy.orm import Session
 from app.infrastructure.db.database import SessionLocal
@@ -211,4 +212,20 @@ def generar_calendario_cliente_by_proceso(request: GenerarClienteProcesoRequest,
                                         repo_proceso_hito_maestro = Depends(get_repo_proceso_hito_maestro),
                                         repo_cliente_proceso_hito = Depends(get_repo_cliente_proceso_hito)):
     proceso_maestro = proceso_repo.obtener_por_id(request.proceso_id)
+    if not proceso_maestro:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+
+    # Validar que no exista solapamiento
+    start_date = request.fecha_inicio or date.today()
+    # Si solo manda fecha de inicio, asumimos que intenta generar hasta fin de año
+    end_date = date(start_date.year, 12, 31)
+
+    existentes = repo.listar_por_cliente(request.cliente_id)
+    for p in existentes:
+        if p.proceso_id == request.proceso_id:
+            # Check overlap: (StartA <= EndB) and (EndA >= StartB)
+            p_fin = p.fecha_fin or date.max
+            if p.fecha_inicio <= end_date and start_date <= p_fin:
+                 raise HTTPException(status_code=400, detail=f"El proceso ya existe en el rango seleccionado ({p.fecha_inicio} - {p_fin})")
+
     return generar_calendario_cliente_proceso(request,proceso_maestro, repo,repo_proceso_hito_maestro, repo_cliente_proceso_hito)

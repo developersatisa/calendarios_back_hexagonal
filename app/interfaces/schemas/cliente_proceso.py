@@ -6,6 +6,7 @@ class GenerarClienteProcesoRequest(BaseModel):
     cliente_id: str
     proceso_id: int
     fecha_inicio: Optional[date] = None
+    fecha_fin: Optional[date] = None
 
     @validator('cliente_id')
     def limpiar_cliente_id(cls, v: str) -> str:
