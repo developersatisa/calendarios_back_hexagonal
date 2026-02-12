@@ -15,10 +15,10 @@ RUN apt-get update && \
     curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg && \
     echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list && \
     apt-get update && \
-    ACCEPT_EULA=Y apt-get install -y msodbcsql17
+    ACCEPT_EULA=Y apt-get install -y msodbcsql18
 
 # Muy importante: añadir /code al PYTHONPATH
 ENV PYTHONPATH="${PYTHONPATH}:/code"
 
 # Y ejecutar uvicorn indicando el punto de entrada correcto
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8022", "--reload"]

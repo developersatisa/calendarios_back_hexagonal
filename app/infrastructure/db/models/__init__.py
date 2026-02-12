@@ -6,5 +6,7 @@ from .plantilla_proceso_model import PlantillaProcesoModel
 from .cliente_proceso_model import ClienteProcesoModel
 from .cliente_proceso_hito_model import ClienteProcesoHitoModel
 from .cliente_proceso_hito_cumplimiento_model import ClienteProcesoHitoCumplimientoModel
-from .documental_categoria_model import DocumentalCategoriaModel
-from .documental_documentos_model import DocumentalDocumentosModel
+from .documental_carpeta_proceso_model import DocumentalCarpetaProcesoModel
+from .documental_carpeta_cliente_model import DocumentalCarpetaClienteModel
+from .documental_carpeta_documentos_model import DocumentalCarpetaDocumentosModel
+from .cliente_model import ClienteModel

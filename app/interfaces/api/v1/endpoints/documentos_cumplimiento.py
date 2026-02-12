@@ -94,7 +94,6 @@ def obtener_documento_cumplimiento(
 @router.post("", response_model=DocumentosCumplimientoResponse)
 async def crear_documento_cumplimiento(
     cumplimiento_id: int = Form(...),
-    nombre_documento: str = Form(...),
     file: UploadFile = File(...),
     repo_doc: DocumentosCumplimientoRepository = Depends(get_repo),
     repo_cumplimiento: ClienteProcesoHitoCumplimientoRepository = Depends(get_repo_cumplimiento),
@@ -115,7 +114,7 @@ async def crear_documento_cumplimiento(
     try:
         return uc.execute(
             cumplimiento_id=cumplimiento_id,
-            nombre_documento=nombre_documento,
+            nombre_documento=file.filename,
             original_file_name=file.filename,
             content=contenido
         )

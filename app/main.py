@@ -28,10 +28,7 @@ from app.interfaces.api.v1.endpoints import (
     admin_api_cliente,
     metadato,
     metadatos_area,
-    documento,
     documentos_cumplimiento,
-    documental_categoria,
-    documental_documentos,
     documento_metadato,
     subdepar,
     metricas,
@@ -42,7 +39,10 @@ from app.interfaces.api.v1.endpoints import (
     status_todos_clientes,
     persona,
     api_rol,
-    config_avisos_calendarios
+    config_avisos_calendarios,
+    documental_carpeta_proceso,
+    documental_carpeta_cliente,
+    documental_carpeta_documentos
 )
 
 
@@ -99,10 +99,7 @@ app.include_router(cliente_proceso_hito_cumplimiento.router, dependencies=[Depen
 app.include_router(plantilla_proceso.router,    dependencies=[Depends(get_current_user)])
 app.include_router(proceso_hito_maestro.router, dependencies=[Depends(get_current_user)])
 app.include_router(metadato.router,             dependencies=[Depends(get_current_user)])
-app.include_router(documento.router,            dependencies=[Depends(get_current_user)])
 app.include_router(documentos_cumplimiento.router, dependencies=[Depends(get_current_user)])
-app.include_router(documental_categoria.router, dependencies=[Depends(get_current_user)])
-app.include_router(documental_documentos.router, dependencies=[Depends(get_current_user)])
 app.include_router(documento_metadato.router,   dependencies=[Depends(get_current_user)])
 app.include_router(metadatos_area.router,       dependencies=[Depends(get_current_user)])
 app.include_router(subdepar.router,             dependencies=[Depends(get_current_user)])
@@ -114,6 +111,9 @@ app.include_router(status_todos_clientes.router, dependencies=[Depends(get_curre
 app.include_router(persona.router,              dependencies=[Depends(get_current_user)])
 app.include_router(api_rol.router,            dependencies=[Depends(get_current_user)])
 app.include_router(config_avisos_calendarios.router, dependencies=[Depends(get_current_user)])
+app.include_router(documental_carpeta_proceso.router, dependencies=[Depends(get_current_user)])
+app.include_router(documental_carpeta_cliente.router, dependencies=[Depends(get_current_user)])
+app.include_router(documental_carpeta_documentos.router, dependencies=[Depends(get_current_user)])
 
 
 configure_websockets(app)

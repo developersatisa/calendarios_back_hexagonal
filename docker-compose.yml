@@ -1,21 +1,20 @@
-
-name: arc
+name: aqh
 
 services:
   backend:
-    container_name: arc_backend
-    profiles: ["ARC"]
+    container_name: aqh_backend
+    profiles: ["AQH"]
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8011:8000"
+      - "8022:8022"
     volumes:
       - ./app:/code/app
       - /documentos:/documentos
     env_file:
       - .env
     #command: >
-    #  bash -c "uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    #  bash -c "uvicorn app.main:app --host 0.0.0.0 --port 8022 --reload"
 
-# docker compose --profile ARC up
+# sudo docker compose --profile AQH up -d --build

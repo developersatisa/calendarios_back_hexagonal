@@ -60,8 +60,16 @@ class CrearDocumentoCumplimientoUseCase:
         ext = os.path.splitext(original_file_name)[1]
         stored_file_name = f"{uuid.uuid4().hex}{ext}"
 
-        # 6) Guardar en disco bajo <ROOT>/<CIF>/
-        self.storage.save(cif, stored_file_name, content)
+        # 6) Guardar en disco bajo /documentos/calendarios/<CIF>/documentos_cumplimiento/<ID>/
+        # Usamos ruta absoluta /documentos para ignorar FILE_STORAGE_ROOT si está definido
+        cif_path = os.path.join("/documentos", "calendarios", cif)
+        category_path = os.path.join("documentos_cumplimiento", str(cumplimiento_id))
+
+        self.storage.save_with_category(cif_path, category_path, stored_file_name, content)
+
+        # Guardamos en BD la ruta relativa desde el CIF (category + filename)
+        # Esto permite que al recuperar recuperemos con cif="documentos/calendarios/<CIF>" y stored_name="<category>/<file>"
+        stored_file_relative_path = os.path.join(category_path, stored_file_name)
 
         # 7) Construir entidad y persistir en BD
         nuevo_doc = DocumentosCumplimiento(
@@ -69,6 +77,6 @@ class CrearDocumentoCumplimientoUseCase:
             cumplimiento_id=cumplimiento_id,
             nombre_documento=nombre_documento,
             original_file_name=original_file_name,
-            stored_file_name=stored_file_name
+            stored_file_name=stored_file_relative_path
         )
         return self.documentos_cumplimiento_repo.create(nuevo_doc)

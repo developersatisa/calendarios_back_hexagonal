@@ -1,7 +1,5 @@
-from dataclasses import dataclass
-
-@dataclass
 class ApiRol:
-    id: int
-    email: str
-    admin: bool
+    def __init__(self, id=None, email=None, admin=False):
+        self.id = id
+        self.email = email
+        self.admin = admin

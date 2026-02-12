@@ -1,17 +1,17 @@
-# app/interfaces/api/v1/endpoints/status_todos_clientes.py
+from typing import Optional, List, Dict, Any
+from datetime import date, time, datetime
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
-import io
+
 try:
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill
 except ImportError:
-    pass
-from typing import Optional, List, Dict, Any
-from datetime import date, time
+    Workbook = None
 
 from app.infrastructure.db.database import SessionLocal
 from app.infrastructure.db.models.cliente_proceso_hito_model import ClienteProcesoHitoModel
@@ -24,12 +24,187 @@ from app.infrastructure.db.models.documentos_cumplimiento_model import Documento
 
 router = APIRouter(prefix="/status-todos-clientes", tags=["Status Todos los Clientes"])
 
+# — Dependencias —
+
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+# — Helpers de Consulta —
+
+def _get_subquery_ultimo_cumplimiento(db: Session):
+    """
+    Subconsulta para obtener el ID del último cumplimiento por hito.
+    """
+    return (
+        db.query(
+            ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id,
+            func.max(ClienteProcesoHitoCumplimientoModel.id).label('ultimo_cumplimiento_id')
+        )
+        .group_by(ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id)
+        .subquery()
+    )
+
+def _build_base_query(db: Session, subquery_ultimo_cumplimiento):
+    """
+    Construye la consulta base con todos los JOINs necesarios.
+    """
+    return (
+        db.query(
+            # Campos de ClienteProcesoHito
+            ClienteProcesoHitoModel.id,
+            ClienteProcesoHitoModel.cliente_proceso_id,
+            ClienteProcesoHitoModel.hito_id,
+            ClienteProcesoHitoModel.estado,
+            ClienteProcesoHitoModel.fecha_estado,
+            ClienteProcesoHitoModel.fecha_limite,
+            ClienteProcesoHitoModel.hora_limite,
+            ClienteProcesoHitoModel.tipo,
+            ClienteProcesoHitoModel.habilitado,
+
+            # Información del cliente
+            ClienteModel.idcliente.label('cliente_id'),
+            ClienteModel.razsoc.label('cliente_nombre'),
+
+            # Información del proceso
+            ClienteProcesoModel.proceso_id,
+            ProcesoModel.nombre.label('proceso_nombre'),
+
+            # Información del hito maestro
+            HitoModel.nombre.label('hito_nombre'),
+
+            # Último cumplimiento (si existe)
+            ClienteProcesoHitoCumplimientoModel.id.label('cumplimiento_id'),
+            ClienteProcesoHitoCumplimientoModel.fecha.label('cumplimiento_fecha'),
+            ClienteProcesoHitoCumplimientoModel.hora.label('cumplimiento_hora'),
+            ClienteProcesoHitoCumplimientoModel.observacion.label('cumplimiento_observacion'),
+            ClienteProcesoHitoCumplimientoModel.usuario.label('cumplimiento_usuario'),
+            ClienteProcesoHitoCumplimientoModel.fecha_creacion.label('cumplimiento_fecha_creacion'),
+
+            # Número de documentos del último cumplimiento
+            func.count(DocumentoCumplimientoModel.id).label('num_documentos')
+        )
+        .join(ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id)
+        .join(ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente)
+        .join(ProcesoModel, ClienteProcesoModel.proceso_id == ProcesoModel.id)
+        .join(HitoModel, ClienteProcesoHitoModel.hito_id == HitoModel.id)
+        .outerjoin(
+            subquery_ultimo_cumplimiento,
+            ClienteProcesoHitoModel.id == subquery_ultimo_cumplimiento.c.cliente_proceso_hito_id
+        )
+        .outerjoin(
+            ClienteProcesoHitoCumplimientoModel,
+            ClienteProcesoHitoCumplimientoModel.id == subquery_ultimo_cumplimiento.c.ultimo_cumplimiento_id
+        )
+        .outerjoin(
+            DocumentoCumplimientoModel,
+            ClienteProcesoHitoCumplimientoModel.id == DocumentoCumplimientoModel.cumplimiento_id
+        )
+        .filter(ClienteProcesoHitoModel.habilitado == True)
+        .group_by(
+            ClienteProcesoHitoModel.id,
+            ClienteProcesoHitoModel.cliente_proceso_id,
+            ClienteProcesoHitoModel.hito_id,
+            ClienteProcesoHitoModel.estado,
+            ClienteProcesoHitoModel.fecha_estado,
+            ClienteProcesoHitoModel.fecha_limite,
+            ClienteProcesoHitoModel.hora_limite,
+            ClienteProcesoHitoModel.tipo,
+            ClienteProcesoHitoModel.habilitado,
+            ClienteModel.idcliente,
+            ClienteModel.razsoc,
+            ClienteProcesoModel.proceso_id,
+            ProcesoModel.nombre,
+            HitoModel.nombre,
+            ClienteProcesoHitoCumplimientoModel.id,
+            ClienteProcesoHitoCumplimientoModel.fecha,
+            ClienteProcesoHitoCumplimientoModel.hora,
+            ClienteProcesoHitoCumplimientoModel.observacion,
+            ClienteProcesoHitoCumplimientoModel.usuario,
+            ClienteProcesoHitoCumplimientoModel.fecha_creacion
+        )
+    )
+
+def _apply_filters(
+    query,
+    fecha_limite_desde: Optional[str] = None,
+    fecha_limite_hasta: Optional[str] = None,
+    cliente_id: Optional[str] = None,
+    proceso_id: Optional[int] = None,
+    hito_id: Optional[int] = None
+):
+    """
+    Aplica los filtros comunes a la consulta.
+    """
+    if fecha_limite_desde:
+        try:
+            fecha_desde = date.fromisoformat(fecha_limite_desde)
+            query = query.filter(ClienteProcesoHitoModel.fecha_limite >= fecha_desde)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato de fecha_limite_desde inválido. Use YYYY-MM-DD")
+
+    if fecha_limite_hasta:
+        try:
+            fecha_hasta = date.fromisoformat(fecha_limite_hasta)
+            query = query.filter(ClienteProcesoHitoModel.fecha_limite <= fecha_hasta)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato de fecha_limite_hasta inválido. Use YYYY-MM-DD")
+
+    if cliente_id:
+        query = query.filter(ClienteModel.idcliente == cliente_id)
+
+    if proceso_id:
+        query = query.filter(ClienteProcesoModel.proceso_id == proceso_id)
+
+    if hito_id:
+        query = query.filter(ClienteProcesoHitoModel.hito_id == hito_id)
+
+    return query
+
+def _calculate_excel_status(estado_base, fecha_limite, hora_limite, fecha_cumplimiento):
+    """
+    Calcula el estado para el reporte Excel basado en reglas de negocio.
+    """
+    if estado_base == 'Finalizado':
+        if not fecha_cumplimiento:
+            return "Finalizado"
+
+        # Construir deadline datetime
+        if not fecha_limite:
+            return "Finalizado"
+
+        deadline = datetime.combine(fecha_limite, hora_limite) if hora_limite else datetime.combine(fecha_limite, time(23, 59, 59))
+
+        # Normalizar fecha_cumplimiento a datetime
+        if isinstance(fecha_cumplimiento, date) and not isinstance(fecha_cumplimiento, datetime):
+            fulfillment_dt = datetime.combine(fecha_cumplimiento, time(0, 0, 0))
+        else:
+            fulfillment_dt = fecha_cumplimiento
+
+        # Comparar
+        if fulfillment_dt and fulfillment_dt > deadline:
+            return "Cumplido fuera de plazo"
+        else:
+            return "Cumplido en plazo"
+
+    else:
+        # Estados pendientes
+        if not fecha_limite:
+            return estado_base
+
+        today = date.today()
+
+        if fecha_limite == today:
+            return "Vence hoy"
+        elif fecha_limite < today:
+            return "Pendiente fuera de plazo"
+        else:
+            return "Pendiente en plazo"
+
+# — Endpoints —
 
 @router.get("/hitos", summary="Obtener todos los hitos habilitados de todos los clientes",
             description="Devuelve todos los hitos habilitados de todos los clientes con información relacionada (cliente, proceso, hito maestro) y el último cumplimiento si existe.")
@@ -45,123 +220,15 @@ def get_status_todos_clientes(
     offset: Optional[int] = Query(None, ge=0, description="Offset para paginación"),
     db: Session = Depends(get_db)
 ):
-    """
-    Obtiene todos los hitos habilitados de todos los clientes con información relacionada.
-    Incluye el último cumplimiento de cada hito con el número de documentos asociados.
-    """
     try:
-        # Subconsulta para obtener el último cumplimiento por hito con número de documentos
-        subquery_ultimo_cumplimiento = (
-            db.query(
-                ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id,
-                func.max(ClienteProcesoHitoCumplimientoModel.id).label('ultimo_cumplimiento_id')
-            )
-            .group_by(ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id)
-            .subquery()
-        )
+        # 1. Preparar Query
+        subquery = _get_subquery_ultimo_cumplimiento(db)
+        query = _build_base_query(db, subquery)
 
-        # Consulta principal con todos los JOINs necesarios
-        query = (
-            db.query(
-                # Campos de ClienteProcesoHito
-                ClienteProcesoHitoModel.id,
-                ClienteProcesoHitoModel.cliente_proceso_id,
-                ClienteProcesoHitoModel.hito_id,
-                ClienteProcesoHitoModel.estado,
-                ClienteProcesoHitoModel.fecha_estado,
-                ClienteProcesoHitoModel.fecha_limite,
-                ClienteProcesoHitoModel.hora_limite,
-                ClienteProcesoHitoModel.tipo,
-                ClienteProcesoHitoModel.habilitado,
+        # 2. Aplicar Filtros
+        query = _apply_filters(query, fecha_limite_desde, fecha_limite_hasta, cliente_id, proceso_id, hito_id)
 
-                # Información del cliente
-                ClienteModel.idcliente.label('cliente_id'),
-                ClienteModel.razsoc.label('cliente_nombre'),
-
-                # Información del proceso
-                ClienteProcesoModel.proceso_id,
-                ProcesoModel.nombre.label('proceso_nombre'),
-
-                # Información del hito maestro
-                HitoModel.nombre.label('hito_nombre'),
-
-                # Último cumplimiento (si existe)
-                ClienteProcesoHitoCumplimientoModel.id.label('cumplimiento_id'),
-                ClienteProcesoHitoCumplimientoModel.fecha.label('cumplimiento_fecha'),
-                ClienteProcesoHitoCumplimientoModel.hora.label('cumplimiento_hora'),
-                ClienteProcesoHitoCumplimientoModel.observacion.label('cumplimiento_observacion'),
-                ClienteProcesoHitoCumplimientoModel.usuario.label('cumplimiento_usuario'),
-                ClienteProcesoHitoCumplimientoModel.fecha_creacion.label('cumplimiento_fecha_creacion'),
-
-                # Número de documentos del último cumplimiento
-                func.count(DocumentoCumplimientoModel.id).label('num_documentos')
-            )
-            .join(ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id)
-            .join(ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente)
-            .join(ProcesoModel, ClienteProcesoModel.proceso_id == ProcesoModel.id)
-            .join(HitoModel, ClienteProcesoHitoModel.hito_id == HitoModel.id)
-            .outerjoin(
-                subquery_ultimo_cumplimiento,
-                ClienteProcesoHitoModel.id == subquery_ultimo_cumplimiento.c.cliente_proceso_hito_id
-            )
-            .outerjoin(
-                ClienteProcesoHitoCumplimientoModel,
-                ClienteProcesoHitoCumplimientoModel.id == subquery_ultimo_cumplimiento.c.ultimo_cumplimiento_id
-            )
-            .outerjoin(
-                DocumentoCumplimientoModel,
-                ClienteProcesoHitoCumplimientoModel.id == DocumentoCumplimientoModel.cumplimiento_id
-            )
-            .filter(ClienteProcesoHitoModel.habilitado == True)
-            .group_by(
-                ClienteProcesoHitoModel.id,
-                ClienteProcesoHitoModel.cliente_proceso_id,
-                ClienteProcesoHitoModel.hito_id,
-                ClienteProcesoHitoModel.estado,
-                ClienteProcesoHitoModel.fecha_estado,
-                ClienteProcesoHitoModel.fecha_limite,
-                ClienteProcesoHitoModel.hora_limite,
-                ClienteProcesoHitoModel.tipo,
-                ClienteProcesoHitoModel.habilitado,
-                ClienteModel.idcliente,
-                ClienteModel.razsoc,
-                ClienteProcesoModel.proceso_id,
-                ProcesoModel.nombre,
-                HitoModel.nombre,
-                ClienteProcesoHitoCumplimientoModel.id,
-                ClienteProcesoHitoCumplimientoModel.fecha,
-                ClienteProcesoHitoCumplimientoModel.hora,
-                ClienteProcesoHitoCumplimientoModel.observacion,
-                ClienteProcesoHitoCumplimientoModel.usuario,
-                ClienteProcesoHitoCumplimientoModel.fecha_creacion
-            )
-        )
-
-        # Aplicar filtros opcionales
-        if fecha_limite_desde:
-            try:
-                fecha_desde = date.fromisoformat(fecha_limite_desde)
-                query = query.filter(ClienteProcesoHitoModel.fecha_limite >= fecha_desde)
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Formato de fecha_limite_desde inválido. Use YYYY-MM-DD")
-
-        if fecha_limite_hasta:
-            try:
-                fecha_hasta = date.fromisoformat(fecha_limite_hasta)
-                query = query.filter(ClienteProcesoHitoModel.fecha_limite <= fecha_hasta)
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Formato de fecha_limite_hasta inválido. Use YYYY-MM-DD")
-
-        if cliente_id:
-            query = query.filter(ClienteModel.idcliente == cliente_id)
-
-        if proceso_id:
-            query = query.filter(ClienteProcesoModel.proceso_id == proceso_id)
-
-        if hito_id:
-            query = query.filter(ClienteProcesoHitoModel.hito_id == hito_id)
-
-        # Aplicar ordenamiento
+        # 3. Aplicar Ordenamiento
         if ordenar_por == "fecha_limite":
             order_field = ClienteProcesoHitoModel.fecha_limite
         elif ordenar_por == "cliente_nombre":
@@ -176,22 +243,21 @@ def get_status_todos_clientes(
         else:
             query = query.order_by(order_field.asc())
 
-        # Obtener total antes de aplicar paginación
+        # 4. Obtener Total (antes de paginar)
         total = query.count()
 
-        # Aplicar paginación si se especifica
+        # 5. Aplicar Paginación
         if offset is not None:
             query = query.offset(offset)
         if limit is not None:
             query = query.limit(limit)
 
-        # Ejecutar consulta
+        # 6. Ejecutar
         resultados = query.all()
 
-        # Construir respuesta
+        # 7. Mapear Respuesta
         hitos_response = []
         for row in resultados:
-            # Construir objeto de último cumplimiento si existe
             ultimo_cumplimiento = None
             if row.cumplimiento_id:
                 ultimo_cumplimiento = {
@@ -205,7 +271,6 @@ def get_status_todos_clientes(
                 }
 
             hito_dict = {
-                # Campos de ClienteProcesoHito
                 "id": row.id,
                 "cliente_proceso_id": row.cliente_proceso_id,
                 "hito_id": row.hito_id,
@@ -215,19 +280,11 @@ def get_status_todos_clientes(
                 "hora_limite": str(row.hora_limite) if row.hora_limite else None,
                 "tipo": row.tipo,
                 "habilitado": bool(row.habilitado),
-
-                # Información del cliente
                 "cliente_id": str(row.cliente_id or ""),
                 "cliente_nombre": str(row.cliente_nombre or "").strip(),
-
-                # Información del proceso
                 "proceso_id": row.proceso_id,
                 "proceso_nombre": str(row.proceso_nombre or "").strip(),
-
-                # Información del hito maestro
                 "hito_nombre": str(row.hito_nombre or "").strip(),
-
-                # Último cumplimiento
                 "ultimo_cumplimiento": ultimo_cumplimiento
             }
             hitos_response.append(hito_dict)
@@ -243,125 +300,63 @@ def get_status_todos_clientes(
         raise HTTPException(status_code=500, detail=f"Error al obtener hitos: {str(e)}")
 
 
-@router.get("/exportar-excel", summary="Exportar status de todos los clientes a Excel")
+@router.get("/exportar-excel", summary="Exportar status de todos los clientes a Excel",
+            description="Genera y descarga un archivo Excel con el estado de los hitos filtrados, utilizando colores para indicar el estado de cumplimiento.")
 def exportar_status_todos_excel(
-    fecha_desde: Optional[str] = Query(None, description="Filtrar por fecha límite desde (YYYY-MM-DD)"),
-    fecha_hasta: Optional[str] = Query(None, description="Filtrar por fecha límite hasta (YYYY-MM-DD)"),
+    fecha_limite_desde: Optional[str] = Query(None, description="Filtrar por fecha límite desde (YYYY-MM-DD)"),
+    fecha_limite_hasta: Optional[str] = Query(None, description="Filtrar por fecha límite hasta (YYYY-MM-DD)"),
     cliente_id: Optional[str] = Query(None, description="Filtrar por ID de cliente"),
     proceso_id: Optional[int] = Query(None, description="Filtrar por ID de proceso"),
     hito_id: Optional[int] = Query(None, description="Filtrar por ID de hito"),
     db: Session = Depends(get_db)
 ):
-    """
-    Exporta a Excel la misma información que el listado de hitos de todos los clientes.
-    """
+    if Workbook is None:
+        raise HTTPException(status_code=500, detail="La librería 'openpyxl' no está instalada.")
+
     try:
-        # Reutilizamos la lógica de consulta (sin paginación)
-        query = (
-            db.query(
-                ClienteModel.razsoc.label('cliente_nombre'),
-                ProcesoModel.nombre.label('proceso_nombre'),
-                HitoModel.nombre.label('hito_nombre'),
-                ClienteProcesoHitoModel.estado,
-                ClienteProcesoHitoModel.fecha_limite,
-                ClienteProcesoHitoModel.hora_limite,
-                ClienteProcesoHitoModel.fecha_estado,
-                ClienteProcesoHitoModel.tipo,
-                ClienteProcesoHitoCumplimientoModel.fecha.label('cumplimiento_fecha')
-            )
-            .join(ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id)
-            .join(ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente)
-            .join(ProcesoModel, ClienteProcesoModel.proceso_id == ProcesoModel.id)
-            .join(HitoModel, ClienteProcesoHitoModel.hito_id == HitoModel.id)
-            .outerjoin(ClienteProcesoHitoCumplimientoModel, ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id == ClienteProcesoHitoModel.id)
-            .filter(ClienteProcesoHitoModel.habilitado == True)
-        )
+        # 1. Preparar Query (misma lógica que endpoint principal)
+        subquery = _get_subquery_ultimo_cumplimiento(db)
+        query = _build_base_query(db, subquery)
 
-        def calculate_status(estado_base, fecha_limite, hora_limite, fecha_cumplimiento):
-            from datetime import date as dt_date, datetime as dt_datetime
+        # 2. Aplicar Filtros (mismos filtros)
+        # Nota: renombro los params en la firma para coincidir con la función _apply_filters
+        # En el código original se llamaban 'fecha_desde'/'fecha_hasta' en el endpoint de Excel pero 'fecha_limite_desde' en el otro.
+        # He estandarizado a 'fecha_limite_desde/hasta' en ambos para consistencia.
+        query = _apply_filters(query, fecha_limite_desde, fecha_limite_hasta, cliente_id, proceso_id, hito_id)
 
-            if estado_base == 'Finalizado':
-                if not fecha_cumplimiento:
-                    # Fallback logic if completion date is missing but status is Finalized
-                    # You might want to default to "Cumplido en plazo" or just return "Finalizado"
-                    # depending on business rules. For now, let's assume it was on time if no date.
-                    return "Finalizado"
-
-                # Check if fulfilled on time
-                # Build deadline datetime
-                if not fecha_limite:
-                    return "Finalizado"
-
-                deadline = dt_datetime.combine(fecha_limite, hora_limite) if hora_limite else dt_datetime.combine(fecha_limite, time(23, 59, 59))
-
-                # Assuming fulfillment is a date, we compare with the date part or combine with min time
-                # If fulfillment is a datetime, use it directly.
-                # Based on models, often fulfillment date is just a date.
-                if isinstance(fecha_cumplimiento, dt_date) and not isinstance(fecha_cumplimiento, dt_datetime):
-                     fulfillment_dt = dt_datetime.combine(fecha_cumplimiento, time(0, 0, 0))
-                else:
-                     fulfillment_dt = fecha_cumplimiento
-
-                if fulfillment_dt > deadline:
-                    return "Cumplido fuera de plazo"
-                else:
-                    return "Cumplido en plazo"
-
-            else:
-                # Not finalized (Pending, New, etc.)
-                if not fecha_limite:
-                    return estado_base
-
-                today = dt_date.today()
-
-                if fecha_limite == today:
-                    return "Vence hoy"
-                elif fecha_limite < today:
-                    return "Pendiente fuera de plazo"
-                else:
-                    return "Pendiente en plazo"
-
-        # Filtros
-        if fecha_desde:
-            query = query.filter(ClienteProcesoHitoModel.fecha_limite >= date.fromisoformat(fecha_desde))
-        if fecha_hasta:
-            query = query.filter(ClienteProcesoHitoModel.fecha_limite <= date.fromisoformat(fecha_hasta))
-        if cliente_id:
-            query = query.filter(ClienteModel.idcliente == cliente_id)
-        if proceso_id:
-            query = query.filter(ClienteProcesoModel.proceso_id == proceso_id)
-        if hito_id:
-            query = query.filter(ClienteProcesoHitoModel.hito_id == hito_id)
-
-        # Aplicar ordenamiento predeterminado de /hitos (fecha_limite asc)
+        # 3. Aplicar Ordenamiento por defecto
         query = query.order_by(ClienteProcesoHitoModel.fecha_limite.asc())
 
+        # 4. Ejecutar (sin paginación)
         resultados = query.all()
 
-        # Crear Excel
+        # 5. Generar Excel
         wb = Workbook()
         ws = wb.active
         ws.title = "Status Todos los Clientes"
 
-        headers = ["Cliente", "Proceso", "Hito", "Estado", "Fecha Límite", "Hora Límite", "Fecha Estado", "Tipo"]
+        headers = ["Cliente", "Proceso", "Hito", "Estado", "Fecha Límite", "Hora Límite", "Fecha Actualización", "Tipo"]
         ws.append(headers)
 
+        # Estilo headers
         for cell in ws[1]:
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal="center")
 
-        # Definir colores de fondo por estado
+        # Colores
         colores_estado = {
-            "Cumplido en plazo": PatternFill(start_color="16a34a", end_color="16a34a", fill_type="solid"),  # Verde
-            "Cumplido fuera de plazo": PatternFill(start_color="b45309", end_color="b45309", fill_type="solid"),  # Naranja
-            "Vence hoy": PatternFill(start_color="dc2626", end_color="dc2626", fill_type="solid"),  # Rojo
-            "Pendiente fuera de plazo": PatternFill(start_color="ef4444", end_color="ef4444", fill_type="solid"),  # Rojo claro
-            "Pendiente en plazo": PatternFill(start_color="00a1de", end_color="00a1de", fill_type="solid"),  # Azul Atisa
+            "Cumplido en plazo": PatternFill(start_color="16a34a", end_color="16a34a", fill_type="solid"),
+            "Cumplido fuera de plazo": PatternFill(start_color="b45309", end_color="b45309", fill_type="solid"),
+            "Vence hoy": PatternFill(start_color="dc2626", end_color="dc2626", fill_type="solid"),
+            "Pendiente fuera de plazo": PatternFill(start_color="ef4444", end_color="ef4444", fill_type="solid"),
+            "Pendiente en plazo": PatternFill(start_color="00a1de", end_color="00a1de", fill_type="solid"),
         }
         font_blanco = Font(color="FFFFFF", bold=False)
 
+        # Llenar filas
         for r in resultados:
-            estado_calculado = calculate_status(r.estado, r.fecha_limite, r.hora_limite, r.cumplimiento_fecha)
+            estado_calculado = _calculate_excel_status(r.estado, r.fecha_limite, r.hora_limite, r.cumplimiento_fecha)
+
             ws.append([
                 str(r.cliente_nombre or "").strip(),
                 str(r.proceso_nombre or "").strip(),
@@ -369,14 +364,13 @@ def exportar_status_todos_excel(
                 estado_calculado,
                 r.fecha_limite.strftime("%d/%m/%Y") if r.fecha_limite else "",
                 r.hora_limite.strftime("%H:%M") if r.hora_limite else "",
-                r.fecha_estado.strftime("%d/%m/%Y") if r.fecha_estado else "",
+                r.fecha_estado.strftime("%d/%m/%Y, %H:%M") if r.fecha_estado else "",
                 r.tipo
             ])
 
-            # Aplicar estilos a la fila recién agregada
+            # Aplicar color a la fila
             fila_numero = ws.max_row
             fill_color = colores_estado.get(estado_calculado)
-
             if fill_color:
                 for cell in ws[fila_numero]:
                     cell.fill = fill_color
@@ -385,13 +379,15 @@ def exportar_status_todos_excel(
         # Auto-ajustar columnas
         for col in ws.columns:
             max_length = 0
-            column = col[0].column_letter
+            column_letter = col[0].column_letter
             for cell in col:
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except: pass
-            ws.column_dimensions[column].width = min(max_length + 2, 50)
+                    val = str(cell.value)
+                    if len(val) > max_length:
+                        max_length = len(val)
+                except:
+                    pass
+            ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
 
         output = io.BytesIO()
         wb.save(output)
@@ -407,5 +403,7 @@ def exportar_status_todos_excel(
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al exportar Excel: {str(e)}")

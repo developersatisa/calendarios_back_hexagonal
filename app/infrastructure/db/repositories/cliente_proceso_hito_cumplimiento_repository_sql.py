@@ -217,12 +217,17 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
 
         return modelos
 
-    def obtener_historial_por_cliente_id(self, cliente_id: str):
+    def obtener_historial_por_cliente_id(self, cliente_id: str, skip: int = 0, limit: int = 100):
         """Obtiene el historial de cumplimientos de un cliente con información completa de proceso e hito"""
         from sqlalchemy import text
 
         query = text("""
-            SELECT cpc.id, cpc.fecha, cpc.hora, cpc.usuario, cpc.observacion, cpc.fecha_creacion, cpc.codSubDepar, sd.nombre as departamento,
+            SELECT cpc.id, cpc.fecha, cpc.hora,
+                   CASE
+                       WHEN per.Nombre IS NOT NULL THEN ISNULL(per.Nombre, '') + ' ' + ISNULL(per.Apellido1, '') + ' ' + ISNULL(per.Apellido2, '')
+                       ELSE cpc.usuario
+                   END as usuario,
+                   cpc.observacion, cpc.fecha_creacion, cpc.codSubDepar, sd.nombre as departamento,
                    p.id as proceso_id, p.nombre AS proceso, h.id as hito_id, h.nombre AS hito,
                    cph.fecha_limite, cph.hora_limite,
                    COUNT(dc.id) as num_documentos
@@ -233,9 +238,11 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
             JOIN hito h ON h.id = cph.hito_id
             LEFT JOIN documentos_cumplimiento dc ON dc.cumplimiento_id = cpc.id
             LEFT JOIN subdepar sd ON sd.codSubDePar = cpc.codSubDepar
+            LEFT JOIN [BI DW RRHH DEV].dbo.Persona per ON per.Numeross = cpc.usuario
             WHERE cp.cliente_id = :cliente_id
             GROUP BY cpc.id, cpc.fecha, cpc.hora, cpc.usuario, cpc.observacion, cpc.fecha_creacion, cpc.codSubDepar, sd.nombre,
-                     p.id, p.nombre, h.id, h.nombre, cph.fecha_limite, cph.hora_limite
+                     p.id, p.nombre, h.id, h.nombre, cph.fecha_limite, cph.hora_limite,
+                     per.Nombre, per.Apellido1, per.Apellido2
             ORDER BY cpc.id DESC
         """)
 

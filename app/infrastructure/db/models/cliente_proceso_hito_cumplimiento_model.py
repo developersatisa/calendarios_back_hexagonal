@@ -12,7 +12,7 @@ class ClienteProcesoHitoCumplimientoModel(Base):
     fecha = Column(Date, nullable=False)
     hora = Column(Time, nullable=False)
     observacion = Column(String(255), nullable=True)
-    usuario = Column(String(255), nullable=False)
+    usuario = Column(String(255), nullable=False) # numeross del usuario
     fecha_creacion = Column(DateTime, nullable=True)
     codSubDepar = Column(String(6), nullable=True, default=None)
 
