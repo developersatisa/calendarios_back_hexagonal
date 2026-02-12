@@ -38,7 +38,11 @@ class SQLDocumentoCumplimientoRepository(DocumentosCumplimientoRepositoryPort):
             cumplimiento_id=doc.cumplimiento_id,
             nombre_documento=doc.nombre_documento,
             original_file_name=doc.original_file_name,
-            stored_file_name=doc.stored_file_name
+            stored_file_name=doc.stored_file_name,
+            autor=doc.autor,
+            codSubDepar=doc.codSubDepar
+            # fecha_creacion is handled by server_default=func.now() in DB,
+            # or we can pass it if provided. entity defaults to None.
         )
         self.session.add(modelo)
         self.session.commit()
@@ -77,5 +81,8 @@ class SQLDocumentoCumplimientoRepository(DocumentosCumplimientoRepositoryPort):
             cumplimiento_id=m.cumplimiento_id,
             nombre_documento=m.nombre_documento,
             original_file_name=m.original_file_name,
-            stored_file_name=m.stored_file_name
+            stored_file_name=m.stored_file_name,
+            autor=m.autor,
+            codSubDepar=m.codSubDepar,
+            fecha_creacion=m.fecha_creacion
         )

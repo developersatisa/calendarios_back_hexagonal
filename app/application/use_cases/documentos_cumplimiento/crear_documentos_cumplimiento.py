@@ -32,7 +32,9 @@ class CrearDocumentoCumplimientoUseCase:
         cumplimiento_id: int,
         nombre_documento: str,
         original_file_name: str,
-        content: bytes
+        content: bytes,
+        autor: str = None,
+        codSubDepar: str = None
     ) -> DocumentosCumplimiento:
         # 1) Recuperar ClienteProcesoHitoCumplimiento (retorna modelo)
         cumplimiento_model = self.cumplimiento_repo.obtener_por_id(cumplimiento_id)
@@ -77,6 +79,8 @@ class CrearDocumentoCumplimientoUseCase:
             cumplimiento_id=cumplimiento_id,
             nombre_documento=nombre_documento,
             original_file_name=original_file_name,
-            stored_file_name=stored_file_relative_path
+            stored_file_name=stored_file_relative_path,
+            autor=autor,
+            codSubDepar=codSubDepar
         )
         return self.documentos_cumplimiento_repo.create(nuevo_doc)

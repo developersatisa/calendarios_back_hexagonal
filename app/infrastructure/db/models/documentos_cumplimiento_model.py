@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.infrastructure.db.database import Base
 
@@ -10,5 +11,8 @@ class DocumentoCumplimientoModel(Base):
     nombre_documento = Column(String(255), nullable=False)
     original_file_name = Column(String(255), nullable=False)
     stored_file_name = Column(String(255), nullable=False)
+    autor = Column(String(255), nullable=True)
+    codSubDepar = Column(String(6), nullable=True)
+    fecha_creacion = Column(DateTime, server_default=func.now(), nullable=False)
 
     cumplimiento = relationship("ClienteProcesoHitoCumplimientoModel", backref="documentos")

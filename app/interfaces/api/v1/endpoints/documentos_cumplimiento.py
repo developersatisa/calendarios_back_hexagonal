@@ -32,6 +32,7 @@ from app.application.use_cases.documentos_cumplimiento.crear_documentos_cumplimi
 
 # Esquema de salida
 from app.interfaces.schemas.documentos_cumplimiento import DocumentosCumplimientoResponse
+from app.interfaces.api.security.auth import get_current_user
 
 router = APIRouter(prefix="/documentos-cumplimiento", tags=["Documentos Cumplimiento"])
 
@@ -94,6 +95,8 @@ def obtener_documento_cumplimiento(
 @router.post("", response_model=DocumentosCumplimientoResponse)
 async def crear_documento_cumplimiento(
     cumplimiento_id: int = Form(...),
+    autor: str = Form(...),
+    codSubDepar: str = Form(...),
     file: UploadFile = File(...),
     repo_doc: DocumentosCumplimientoRepository = Depends(get_repo),
     repo_cumplimiento: ClienteProcesoHitoCumplimientoRepository = Depends(get_repo_cumplimiento),
@@ -101,7 +104,9 @@ async def crear_documento_cumplimiento(
     repo_cp: ClienteProcesoRepository = Depends(get_repo_cp),
     repo_cliente: ClienteRepository = Depends(get_repo_cliente),
     storage: DocumentStoragePort = Depends(get_storage),
+    user: dict = Depends(get_current_user)
 ):
+
     uc = CrearDocumentoCumplimientoUseCase(
         documentos_cumplimiento_repo=repo_doc,
         cumplimiento_repo=repo_cumplimiento,
@@ -116,7 +121,9 @@ async def crear_documento_cumplimiento(
             cumplimiento_id=cumplimiento_id,
             nombre_documento=file.filename,
             original_file_name=file.filename,
-            content=contenido
+            content=contenido,
+            autor=autor,
+            codSubDepar=codSubDepar
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
