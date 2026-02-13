@@ -71,6 +71,8 @@ def _build_base_query(db: Session, subquery_ultimo_cumplimiento):
 
             # Información del proceso
             ClienteProcesoModel.proceso_id,
+            ClienteProcesoModel.fecha_inicio.label('proceso_fecha_inicio'),
+            ClienteProcesoModel.fecha_fin.label('proceso_fecha_fin'),
             ProcesoModel.nombre.label('proceso_nombre'),
 
             # Información del hito maestro
@@ -119,6 +121,8 @@ def _build_base_query(db: Session, subquery_ultimo_cumplimiento):
             ClienteModel.idcliente,
             ClienteModel.razsoc,
             ClienteProcesoModel.proceso_id,
+            ClienteProcesoModel.fecha_inicio,
+            ClienteProcesoModel.fecha_fin,
             ProcesoModel.nombre,
             HitoModel.nombre,
             HitoModel.obligatorio,
@@ -396,7 +400,7 @@ def exportar_status_todos_excel(
         # SEGUNDA HOJA: Datos
         ws_datos = wb.create_sheet("Datos")
 
-        headers = ["Cliente", "Proceso", "Hito", "Fecha Límite", "Hora Límite", "Estado",
+        headers = ["Cliente", "Proceso", "Periodo", "Estado Proceso", "Hito", "Fecha Límite", "Hora Límite", "Estado Hito",
                    "Fecha Estado", "Tipo", "Obligatorio", "Observaciones"]
         ws_datos.append(headers)
 
@@ -416,13 +420,47 @@ def exportar_status_todos_excel(
         }
         font_blanco = Font(color="FFFFFF", bold=False)
 
+        # Agrupar resultados por cliente_proceso_id para calcular estado del proceso
+        procesos_estado = {}
+        for r in resultados:
+            cp_id = r.cliente_proceso_id
+            if cp_id not in procesos_estado:
+                procesos_estado[cp_id] = {
+                    'total_hitos': 0,
+                    'hitos_finalizados': 0,
+                    'fecha_inicio': r.proceso_fecha_inicio,
+                    'fecha_fin': r.proceso_fecha_fin
+                }
+            procesos_estado[cp_id]['total_hitos'] += 1
+            if r.estado == 'Finalizado':
+                procesos_estado[cp_id]['hitos_finalizados'] += 1
+
+        # Calcular estado de cada proceso
+        for cp_id in procesos_estado:
+            info = procesos_estado[cp_id]
+            if info['hitos_finalizados'] == info['total_hitos']:
+                info['estado'] = 'Finalizado'
+            else:
+                info['estado'] = 'En proceso'
+
         # Llenar filas
         for r in resultados:
             estado_calculado = _calculate_excel_status(r.estado, r.fecha_limite, r.hora_limite, r.cumplimiento_fecha)
 
+            # Obtener info del proceso
+            cp_info = procesos_estado.get(r.cliente_proceso_id, {})
+            periodo = ""
+            if r.proceso_fecha_inicio:
+                periodo = r.proceso_fecha_inicio.strftime("%d/%m/%Y")
+                if r.proceso_fecha_fin:
+                    periodo += f" - {r.proceso_fecha_fin.strftime('%d/%m/%Y')}"
+            estado_proceso = cp_info.get('estado', 'En proceso')
+
             ws_datos.append([
                 str(r.cliente_nombre or "").strip(),
                 str(r.proceso_nombre or "").strip(),
+                periodo,
+                estado_proceso,
                 str(r.hito_nombre or "").strip(),
                 r.fecha_limite.strftime("%d/%m/%Y") if r.fecha_limite else "",
                 r.hora_limite.strftime("%H:%M") if r.hora_limite else "",
