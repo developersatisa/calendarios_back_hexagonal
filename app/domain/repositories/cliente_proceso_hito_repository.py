@@ -63,3 +63,11 @@ class ClienteProcesoHitoRepository(ABC):
     def actualizar_fecha_masivo(self, hito_id: int, cliente_ids: list[int], nueva_fecha: date, fecha_desde: date, fecha_hasta: date | None = None) -> int:
         """Actualiza la fecha_limite de un hito para múltiples clientes, aplicando solo si la fecha actual >= fecha_desde"""
         pass
+
+    @abstractmethod
+    def ejecutar_reporte_status_todos_clientes(self, filtros: dict, paginacion: dict):
+        """
+        Ejecuta la consulta masiva para el reporte de Status Todos los Clientes.
+        Retorna (lista_resultados, total_registros).
+        """
+        pass

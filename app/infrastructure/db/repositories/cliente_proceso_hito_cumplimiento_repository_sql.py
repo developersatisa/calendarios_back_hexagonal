@@ -229,6 +229,9 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
                    END as usuario,
                    cpc.observacion, cpc.fecha_creacion, cpc.codSubDepar, sd.nombre as departamento,
                    p.id as proceso_id, p.nombre AS proceso, h.id as hito_id, h.nombre AS hito,
+                   cp.id as cliente_proceso_id, cp.fecha_inicio as proceso_fecha_inicio, cp.fecha_fin as proceso_fecha_fin,
+                   (SELECT CASE WHEN COUNT(*) = SUM(CASE WHEN estado = 'Finalizado' THEN 1 ELSE 0 END) THEN 'Finalizado' ELSE 'En proceso' END
+                    FROM cliente_proceso_hito WHERE cliente_proceso_id = cp.id) as proceso_estado,
                    cph.fecha_limite, cph.hora_limite,
                    COUNT(dc.id) as num_documentos
             FROM cliente_proceso_hito_cumplimiento cpc
@@ -242,6 +245,7 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
             WHERE cp.cliente_id = :cliente_id
             GROUP BY cpc.id, cpc.fecha, cpc.hora, cpc.usuario, cpc.observacion, cpc.fecha_creacion, cpc.codSubDepar, sd.nombre,
                      p.id, p.nombre, h.id, h.nombre, cph.fecha_limite, cph.hora_limite,
+                     cp.id, cp.fecha_inicio, cp.fecha_fin,
                      per.Nombre, per.Apellido1, per.Apellido2
             ORDER BY cpc.id DESC
         """)

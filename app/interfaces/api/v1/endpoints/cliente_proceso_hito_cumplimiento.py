@@ -297,59 +297,24 @@ def obtener_historial_por_cliente(
     limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página (máximo 10000)"),
     sort_field: Optional[str] = Query(None, description="Campo por el cual ordenar"),
     sort_direction: Optional[str] = Query("desc", regex="^(asc|desc)$", description="Dirección de ordenación: asc o desc"),
-    repo = Depends(get_repo),
-    db: Session = Depends(get_db)
+    repo = Depends(get_repo)
 ):
     try:
-        # Importar modelos necesarios
-        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
-        from app.infrastructure.db.models.cliente_proceso_hito_model import ClienteProcesoHitoModel
-
         # Obtener el historial completo del cliente
         historial_raw = repo.obtener_historial_por_cliente_id(cliente_id)
-
-        # Obtener información de procesos y calcular su estado
-        procesos_query = (
-            db.query(
-                ClienteProcesoModel.id.label('cliente_proceso_id'),
-                ClienteProcesoModel.proceso_id,
-                ClienteProcesoModel.fecha_inicio,
-                ClienteProcesoModel.fecha_fin,
-                func.count(ClienteProcesoHitoModel.id).label('total_hitos'),
-                func.sum(case((ClienteProcesoHitoModel.estado == 'Finalizado', 1), else_=0)).label('hitos_finalizados')
-            )
-            .join(ClienteProcesoHitoModel, ClienteProcesoModel.id == ClienteProcesoHitoModel.cliente_proceso_id)
-            .filter(ClienteProcesoModel.cliente_id == cliente_id)
-            .group_by(
-                ClienteProcesoModel.id,
-                ClienteProcesoModel.proceso_id,
-                ClienteProcesoModel.fecha_inicio,
-                ClienteProcesoModel.fecha_fin
-            )
-            .all()
-        )
-
-        # Crear diccionario de estados de procesos
-        procesos_info = {}
-        for proc in procesos_query:
-            estado = 'Finalizado' if proc.hitos_finalizados == proc.total_hitos else 'En proceso'
-            procesos_info[proc.proceso_id] = {
-                'cliente_proceso_id': proc.cliente_proceso_id,
-                'fecha_inicio': proc.fecha_inicio,
-                'fecha_fin': proc.fecha_fin,
-                'estado': estado
-            }
 
         # Convertir los resultados a diccionarios para facilitar el manejo
         historial = []
         for row in historial_raw:
-            # Obtener info del proceso
-            proceso_info = procesos_info.get(row.proceso_id, {})
+            # Construir periodo legible si existen las fechas
             periodo = ""
-            if proceso_info.get('fecha_inicio'):
-                periodo = proceso_info['fecha_inicio'].strftime("%d/%m/%Y")
-                if proceso_info.get('fecha_fin'):
-                    periodo += f" - {proceso_info['fecha_fin'].strftime('%d/%m/%Y')}"
+            p_inicio = getattr(row, 'proceso_fecha_inicio', None)
+            p_fin = getattr(row, 'proceso_fecha_fin', None)
+
+            if p_inicio:
+                periodo = p_inicio.strftime("%d/%m/%Y")
+                if p_fin:
+                    periodo += f" - {p_fin.strftime('%d/%m/%Y')}"
 
             historial.append({
                 "id": row.id,
@@ -362,11 +327,11 @@ def obtener_historial_por_cliente(
                 "departamento": row.departamento,
                 "proceso_id": row.proceso_id,
                 "proceso": row.proceso,
-                "proceso_fecha_inicio": proceso_info.get('fecha_inicio').isoformat() if proceso_info.get('fecha_inicio') else None,
-                "proceso_fecha_fin": proceso_info.get('fecha_fin').isoformat() if proceso_info.get('fecha_fin') else None,
+                "proceso_fecha_inicio": p_inicio.isoformat() if p_inicio else None,
+                "proceso_fecha_fin": p_fin.isoformat() if p_fin else None,
                 "proceso_periodo": periodo,
-                "proceso_estado": proceso_info.get('estado', 'En proceso'),
-                "cliente_proceso_id": proceso_info.get('cliente_proceso_id'),
+                "proceso_estado": getattr(row, 'proceso_estado', 'En proceso'),
+                "cliente_proceso_id": getattr(row, 'cliente_proceso_id', None),
                 "hito_id": row.hito_id,
                 "hito": row.hito,
                 "fecha_limite": row.fecha_limite.isoformat() if row.fecha_limite else None,

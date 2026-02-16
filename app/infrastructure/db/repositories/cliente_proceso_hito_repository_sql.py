@@ -346,4 +346,205 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             self.session.commit()
             return eliminados
 
-        return 0
+
+    def ejecutar_reporte_status_todos_clientes(self, filtros: dict, paginacion: dict):
+        from sqlalchemy import text, func, case, or_, Table, Column, String, MetaData
+        from app.infrastructure.db.models.cliente_proceso_hito_model import ClienteProcesoHitoModel
+        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
+        from app.infrastructure.db.models.cliente_model import ClienteModel
+        from app.infrastructure.db.models.proceso_model import ProcesoModel
+        from app.infrastructure.db.models.hito_model import HitoModel
+        from app.infrastructure.db.models.cliente_proceso_hito_cumplimiento_model import ClienteProcesoHitoCumplimientoModel
+        from app.infrastructure.db.models.documentos_cumplimiento_model import DocumentoCumplimientoModel
+        from app.infrastructure.db.models.subdepar_model import SubdeparModel
+
+        # Definir tabla externa Persona
+        metadata = MetaData()
+        # Se asume que el driver manejara los espacios en el nombre de la BD si se pasa como schema
+        persona_table = Table(
+            'Persona',
+            metadata,
+            Column('Numeross', String, primary_key=True),
+            Column('Nombre', String),
+            Column('Apellido1', String),
+            Column('Apellido2', String),
+            schema='BI DW RRHH DEV.dbo'
+        )
+        per = persona_table.alias('per')
+
+        # Subconsulta para obtener el ID del último cumplimiento por hito
+        subquery_ultimo_cumplimiento = (
+            self.session.query(
+                ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id,
+                func.max(ClienteProcesoHitoCumplimientoModel.id).label('ultimo_cumplimiento_id')
+            )
+            .group_by(ClienteProcesoHitoCumplimientoModel.cliente_proceso_hito_id)
+            .subquery()
+        )
+
+        query = (
+            self.session.query(
+                # Campos de ClienteProcesoHito
+                ClienteProcesoHitoModel.id,
+                ClienteProcesoHitoModel.cliente_proceso_id,
+                ClienteProcesoHitoModel.hito_id,
+                ClienteProcesoHitoModel.estado,
+                ClienteProcesoHitoModel.fecha_estado,
+                ClienteProcesoHitoModel.fecha_limite,
+                ClienteProcesoHitoModel.hora_limite,
+                ClienteProcesoHitoModel.tipo,
+                ClienteProcesoHitoModel.habilitado,
+                # Información del cliente
+                ClienteModel.idcliente.label('cliente_id'),
+                ClienteModel.razsoc.label('cliente_nombre'),
+                # Información del proceso
+                ClienteProcesoModel.proceso_id,
+                ClienteProcesoModel.fecha_inicio.label('proceso_fecha_inicio'),
+                ClienteProcesoModel.fecha_fin.label('proceso_fecha_fin'),
+                ClienteProcesoModel.mes.label('proceso_mes'),
+                ClienteProcesoModel.anio.label('proceso_anio'),
+                ProcesoModel.nombre.label('proceso_nombre'),
+                # Información del hito maestro
+                HitoModel.nombre.label('hito_nombre'),
+                HitoModel.obligatorio.label('hito_obligatorio'),
+                # Último cumplimiento (si existe)
+                ClienteProcesoHitoCumplimientoModel.id.label('cumplimiento_id'),
+                ClienteProcesoHitoCumplimientoModel.fecha.label('cumplimiento_fecha'),
+                ClienteProcesoHitoCumplimientoModel.hora.label('cumplimiento_hora'),
+                ClienteProcesoHitoCumplimientoModel.observacion.label('cumplimiento_observacion'),
+                 # Usuario: si existe en Persona, concatenar nombre completo, sino usar campo usuario
+                case(
+                    (per.c.Nombre != None,
+                     func.concat(
+                         func.isnull(per.c.Nombre, ''), ' ',
+                         func.isnull(per.c.Apellido1, ''), ' ',
+                         func.isnull(per.c.Apellido2, '')
+                     )),
+                    else_=ClienteProcesoHitoCumplimientoModel.usuario
+                ).label('cumplimiento_usuario'),
+                ClienteProcesoHitoCumplimientoModel.codSubDepar.label('cumplimiento_codSubDepar'),
+                SubdeparModel.nombre.label('cumplimiento_departamento'),
+                ClienteProcesoHitoCumplimientoModel.fecha_creacion.label('cumplimiento_fecha_creacion'),
+                # Número de documentos del último cumplimiento
+                func.count(DocumentoCumplimientoModel.id).label('num_documentos')
+            )
+            .join(ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id)
+            .join(ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente)
+            .join(ProcesoModel, ClienteProcesoModel.proceso_id == ProcesoModel.id)
+            .join(HitoModel, ClienteProcesoHitoModel.hito_id == HitoModel.id)
+            .outerjoin(
+                subquery_ultimo_cumplimiento,
+                ClienteProcesoHitoModel.id == subquery_ultimo_cumplimiento.c.cliente_proceso_hito_id
+            )
+            .outerjoin(
+                ClienteProcesoHitoCumplimientoModel,
+                ClienteProcesoHitoCumplimientoModel.id == subquery_ultimo_cumplimiento.c.ultimo_cumplimiento_id
+            )
+            .outerjoin(
+                DocumentoCumplimientoModel,
+                ClienteProcesoHitoCumplimientoModel.id == DocumentoCumplimientoModel.cumplimiento_id
+            )
+            .outerjoin(
+                SubdeparModel,
+                ClienteProcesoHitoCumplimientoModel.codSubDepar == SubdeparModel.codSubDepar
+            )
+            .outerjoin(
+                per,
+                per.c.Numeross == ClienteProcesoHitoCumplimientoModel.usuario
+            )
+            .filter(ClienteProcesoHitoModel.habilitado == True)
+            .group_by(
+                ClienteProcesoHitoModel.id,
+                ClienteProcesoHitoModel.cliente_proceso_id,
+                ClienteProcesoHitoModel.hito_id,
+                ClienteProcesoHitoModel.estado,
+                ClienteProcesoHitoModel.fecha_estado,
+                ClienteProcesoHitoModel.fecha_limite,
+                ClienteProcesoHitoModel.hora_limite,
+                ClienteProcesoHitoModel.tipo,
+                ClienteProcesoHitoModel.habilitado,
+                ClienteModel.idcliente,
+                ClienteModel.razsoc,
+                ClienteProcesoModel.proceso_id,
+                ClienteProcesoModel.fecha_inicio,
+                ClienteProcesoModel.fecha_fin,
+                ClienteProcesoModel.mes,
+                ClienteProcesoModel.anio,
+                ProcesoModel.nombre,
+                HitoModel.nombre,
+                HitoModel.obligatorio,
+                ClienteProcesoHitoCumplimientoModel.id,
+                ClienteProcesoHitoCumplimientoModel.fecha,
+                ClienteProcesoHitoCumplimientoModel.hora,
+                ClienteProcesoHitoCumplimientoModel.observacion,
+                ClienteProcesoHitoCumplimientoModel.usuario,
+                ClienteProcesoHitoCumplimientoModel.codSubDepar,
+                SubdeparModel.nombre,
+                per.c.Nombre,
+                per.c.Apellido1,
+                per.c.Apellido2,
+                ClienteProcesoHitoCumplimientoModel.fecha_creacion
+            )
+        )
+
+        # Aplicar filtros
+        if filtros.get('fecha_limite_desde'):
+            query = query.filter(ClienteProcesoHitoModel.fecha_limite >= filtros['fecha_limite_desde'])
+
+        if filtros.get('fecha_limite_hasta'):
+            query = query.filter(ClienteProcesoHitoModel.fecha_limite <= filtros['fecha_limite_hasta'])
+
+        if filtros.get('cliente_id'):
+            query = query.filter(ClienteModel.idcliente == filtros['cliente_id'])
+
+        if filtros.get('proceso_id'):
+            query = query.filter(ClienteProcesoModel.proceso_id == filtros['proceso_id'])
+
+        if filtros.get('hito_id'):
+            query = query.filter(ClienteProcesoHitoModel.hito_id == filtros['hito_id'])
+
+        if filtros.get('proceso_nombre'):
+             query = query.filter(ProcesoModel.nombre.ilike(f"%{filtros['proceso_nombre']}%"))
+
+        if filtros.get('tipos'):
+            tipos_list = [t.strip() for t in filtros['tipos'].split(",")]
+            query = query.filter(ClienteProcesoHitoModel.tipo.in_(tipos_list))
+
+        if filtros.get('search_term'):
+            search_pattern = f"%{filtros['search_term']}%"
+            query = query.filter(
+                (ProcesoModel.nombre.ilike(search_pattern)) |
+                (HitoModel.nombre.ilike(search_pattern))
+            )
+
+        # Ordenar
+        ordenar_por = filtros.get('ordenar_por', 'fecha_limite')
+        orden = filtros.get('orden', 'asc')
+
+        if ordenar_por == "fecha_limite":
+            order_field = ClienteProcesoHitoModel.fecha_limite
+        elif ordenar_por == "cliente_nombre":
+            order_field = ClienteModel.razsoc
+        elif ordenar_por == "proceso_nombre":
+            order_field = ProcesoModel.nombre
+        else:
+            order_field = ClienteProcesoHitoModel.fecha_limite
+
+        if orden and orden.lower() == "desc":
+            query = query.order_by(order_field.desc())
+        else:
+            query = query.order_by(order_field.asc())
+
+        # Obtener Total
+        total_registros = query.count()
+
+        # Paginación
+        if paginacion:
+            if paginacion.get('offset') is not None:
+                query = query.offset(paginacion['offset'])
+            if paginacion.get('limit') is not None:
+                query = query.limit(paginacion['limit'])
+
+        registros = query.all()
+
+        return registros, total_registros
