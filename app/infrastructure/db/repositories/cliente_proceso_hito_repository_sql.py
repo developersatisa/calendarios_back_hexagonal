@@ -177,52 +177,83 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             except ValueError:
                 fecha_desde = date.fromisoformat(fecha_desde)
 
-        # Obtener todos los registros a deshabilitar
-        query = self.session.query(ClienteProcesoHitoModel).filter(
+        # 1. Obtener los cliente_proceso_id únicos que serán afectados
+        # Usamos distinct para no traer filas duplicadas y solo los IDs
+        affected_cps = self.session.query(ClienteProcesoHitoModel.cliente_proceso_id)\
+            .filter(ClienteProcesoHitoModel.hito_id == hito_id, ClienteProcesoHitoModel.fecha_limite >= fecha_desde)\
+            .distinct().all()
+
+        affected_cp_ids = [r[0] for r in affected_cps]
+
+        if not affected_cp_ids:
+             return {'hitos_afectados': 0, 'cliente_procesos_deshabilitados': []}
+
+        # 2. Calcular qué procesos quedarán vacíos (Pre-calculo sin locks)
+
+        # A. Total habilitados actualmente por CP
+        q_total = self.session.query(
+            ClienteProcesoHitoModel.cliente_proceso_id,
+            func.count(ClienteProcesoHitoModel.id)
+        ).filter(
+            ClienteProcesoHitoModel.cliente_proceso_id.in_(affected_cp_ids),
+            ClienteProcesoHitoModel.habilitado == True
+        ).group_by(ClienteProcesoHitoModel.cliente_proceso_id)
+
+        total_counts = dict(q_total.all())
+
+        # B. Total habilitados QUE SE VAN A BORRAR por CP (los que cumplen la condicion de borrado y estan habilitados)
+        q_removing = self.session.query(
+            ClienteProcesoHitoModel.cliente_proceso_id,
+            func.count(ClienteProcesoHitoModel.id)
+        ).filter(
+            ClienteProcesoHitoModel.cliente_proceso_id.in_(affected_cp_ids),
+            ClienteProcesoHitoModel.habilitado == True,
+            # Condicion de borrado
             ClienteProcesoHitoModel.hito_id == hito_id,
             ClienteProcesoHitoModel.fecha_limite >= fecha_desde
-        )
+        ).group_by(ClienteProcesoHitoModel.cliente_proceso_id)
 
-        # Obtener los cliente_proceso_id únicos que serán afectados
-        cliente_proceso_ids_afectados = set()
-        afectados = 0
+        removing_counts = dict(q_removing.all())
+
+        cps_to_disable = []
+        for cp_id in affected_cp_ids:
+            total = total_counts.get(cp_id, 0)
+            removing = removing_counts.get(cp_id, 0)
+            # Si al quitar los que se van a borrar quedan 0 o menos, deshabilitar el proceso
+            if (total - removing) <= 0:
+                cps_to_disable.append(cp_id)
+
+        # 3. Execute Updates (Write phase)
+
+        # A. Deshabilitar Hitos
+        # Ejecutamos update directo para todos, incluyendo los que ya estaban deshabilitados para ser consistentes,
+        # pero usamos el filtrado simple para el update real.
+        hitos_afectados = self.session.query(ClienteProcesoHitoModel).filter(
+             ClienteProcesoHitoModel.hito_id == hito_id,
+             ClienteProcesoHitoModel.fecha_limite >= fecha_desde
+        ).update({ClienteProcesoHitoModel.habilitado: False}, synchronize_session=False)
+
+        # B. Deshabilitar Parent Processes
         cliente_procesos_deshabilitados = []
+        if cps_to_disable:
+            # Obtener detalles para el retorno antes o despues del update
+            cps_details = self.session.query(
+                ClienteProcesoModel.id,
+                ClienteProcesoModel.cliente_id,
+                ClienteProcesoModel.proceso_id
+            ).filter(ClienteProcesoModel.id.in_(cps_to_disable)).all()
 
-        # Primero, obtener los registros que se van a deshabilitar
-        registros_a_deshabilitar = query.all()
+            cliente_procesos_deshabilitados = [
+                {'id': r.id, 'cliente_id': r.cliente_id, 'proceso_id': r.proceso_id} for r in cps_details
+            ]
 
-        for registro in registros_a_deshabilitar:
-            registro.habilitado = False
-            cliente_proceso_ids_afectados.add(registro.cliente_proceso_id)
-            afectados += 1
-
-        # Hacer flush para que los cambios se reflejen en la sesión antes de contar
-        self.session.flush()
-
-        # Ahora verificar cada cliente_proceso afectado
-        for cliente_proceso_id in cliente_proceso_ids_afectados:
-            # Contar TODOS los hitos habilitados para este cliente_proceso
-            hitos_habilitados = self.session.query(ClienteProcesoHitoModel).filter(
-                ClienteProcesoHitoModel.cliente_proceso_id == cliente_proceso_id,
-                ClienteProcesoHitoModel.habilitado == True
-            ).count()
-
-            # Si no quedan hitos habilitados, deshabilitar el cliente_proceso
-            if hitos_habilitados == 0:
-                cliente_proceso = self.session.query(ClienteProcesoModel).filter_by(
-                    id=cliente_proceso_id
-                ).first()
-                if cliente_proceso:
-                    cliente_proceso.habilitado = False
-                    cliente_procesos_deshabilitados.append({
-                        'id': cliente_proceso.id,
-                        'cliente_id': cliente_proceso.cliente_id,
-                        'proceso_id': cliente_proceso.proceso_id
-                    })
+            self.session.query(ClienteProcesoModel).filter(
+                ClienteProcesoModel.id.in_(cps_to_disable)
+            ).update({ClienteProcesoModel.habilitado: False}, synchronize_session=False)
 
         self.session.commit()
         return {
-            'hitos_afectados': afectados,
+            'hitos_afectados': hitos_afectados,
             'cliente_procesos_deshabilitados': cliente_procesos_deshabilitados
         }
 

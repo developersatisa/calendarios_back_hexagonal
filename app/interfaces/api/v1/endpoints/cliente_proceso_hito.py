@@ -220,18 +220,23 @@ def get_hitos_habilitados_por_proceso(
     description="Deshabilita (habilitado=False) todos los ClienteProcesoHito de un hito_id a partir de una fecha (inclusive). Si todos los hitos de un cliente_proceso quedan deshabilitados, también deshabilita el cliente_proceso.")
 def deshabilitar_hitos_por_hito_desde(
     hito_id: int = Path(..., description="ID del hito (maestro)"),
-    fecha_desde: str = Query(..., description="Fecha ISO (YYYY-MM-DD) desde la cual deshabilitar los hitos"),
-    repo = Depends(get_repo)
+    payload: dict = Body(..., example={"fecha_desde": "2023-01-01"}),
+    repo: ClienteProcesoHitoRepositorySQL = Depends(get_repo)
 ):
     try:
+        fecha_desde = payload.get("fecha_desde")
+        if not fecha_desde:
+             raise HTTPException(status_code=400, detail="Debe proporcionar 'fecha_desde' en el cuerpo de la solicitud")
+
         resultado = repo.deshabilitar_desde_fecha_por_hito(hito_id, fecha_desde)
         return {
             "mensaje": "Hitos deshabilitados exitosamente",
-            "hitos_afectados": resultado['hitos_afectados'],
-            "cliente_procesos_deshabilitados": resultado['cliente_procesos_deshabilitados'],
-            "fecha_desde": fecha_desde,
-            "resumen": f"Se deshabilitaron {resultado['hitos_afectados']} hitos y {len(resultado['cliente_procesos_deshabilitados'])} procesos de cliente"
+            "detalles": resultado
         }
+    except HTTPException:
+        raise
+    except ValueError as e:
+         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al deshabilitar hitos: {str(e)}")
 
