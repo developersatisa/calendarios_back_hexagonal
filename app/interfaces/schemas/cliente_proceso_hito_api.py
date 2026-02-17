@@ -30,4 +30,9 @@ class UpdateFechaMasivoRequest(BaseModel):
                 else:
                     cleaned.append(int(item))
             return cleaned
+            return cleaned
         return v
+
+class UpdateDeshabilitarHitoRequest(BaseModel):
+    fecha_desde: date
+    cliente_id: Optional[str] = None

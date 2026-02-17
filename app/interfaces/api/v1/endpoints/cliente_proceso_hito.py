@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.infrastructure.db.database import SessionLocal
 from app.infrastructure.db.repositories.cliente_proceso_hito_repository_sql import ClienteProcesoHitoRepositorySQL
 from app.application.use_cases.cliente_proceso_hito.actualizar_fecha_masivo import actualizar_fecha_masivo
-from app.interfaces.schemas.cliente_proceso_hito_api import UpdateFechaMasivoRequest
+from app.interfaces.schemas.cliente_proceso_hito_api import UpdateFechaMasivoRequest, UpdateDeshabilitarHitoRequest
 
 from app.domain.entities.cliente_proceso_hito import ClienteProcesoHito
 
@@ -219,16 +219,15 @@ def get_hitos_habilitados_por_proceso(
 @router.put("/hito/{hito_id}/deshabilitar-desde", summary="Deshabilitar hitos de un hito desde una fecha",
     description="Deshabilita (habilitado=False) todos los ClienteProcesoHito de un hito_id a partir de una fecha (inclusive). Si todos los hitos de un cliente_proceso quedan deshabilitados, también deshabilita el cliente_proceso.")
 def deshabilitar_hitos_por_hito_desde(
+    data: UpdateDeshabilitarHitoRequest,
     hito_id: int = Path(..., description="ID del hito (maestro)"),
-    payload: dict = Body(..., example={"fecha_desde": "2023-01-01"}),
     repo: ClienteProcesoHitoRepositorySQL = Depends(get_repo)
 ):
     try:
-        fecha_desde = payload.get("fecha_desde")
-        if not fecha_desde:
+        if not data.fecha_desde:
              raise HTTPException(status_code=400, detail="Debe proporcionar 'fecha_desde' en el cuerpo de la solicitud")
 
-        resultado = repo.deshabilitar_desde_fecha_por_hito(hito_id, fecha_desde)
+        resultado = repo.deshabilitar_desde_fecha_por_hito(hito_id, data.fecha_desde, cliente_id=data.cliente_id)
         return {
             "mensaje": "Hitos deshabilitados exitosamente",
             "detalles": resultado

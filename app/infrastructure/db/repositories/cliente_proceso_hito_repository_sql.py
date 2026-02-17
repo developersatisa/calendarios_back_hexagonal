@@ -167,7 +167,7 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             } for r in resultados
         ]
 
-    def deshabilitar_desde_fecha_por_hito(self, hito_id: int, fecha_desde):
+    def deshabilitar_desde_fecha_por_hito(self, hito_id: int, fecha_desde, cliente_id: str = None):
         """Deshabilita todos los ClienteProcesoHito para un hito_id con fecha_limite >= fecha_desde"""
 
         # Normalizar fecha_desde a date
@@ -179,9 +179,14 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
 
         # 1. Obtener los cliente_proceso_id únicos que serán afectados
         # Usamos distinct para no traer filas duplicadas y solo los IDs
-        affected_cps = self.session.query(ClienteProcesoHitoModel.cliente_proceso_id)\
-            .filter(ClienteProcesoHitoModel.hito_id == hito_id, ClienteProcesoHitoModel.fecha_limite >= fecha_desde)\
-            .distinct().all()
+        query = self.session.query(ClienteProcesoHitoModel.cliente_proceso_id)\
+            .filter(ClienteProcesoHitoModel.hito_id == hito_id, ClienteProcesoHitoModel.fecha_limite >= fecha_desde)
+
+        if cliente_id:
+            query = query.join(ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id)\
+                         .filter(ClienteProcesoModel.cliente_id == cliente_id)
+
+        affected_cps = query.distinct().all()
 
         affected_cp_ids = [r[0] for r in affected_cps]
 
@@ -226,11 +231,11 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
         # 3. Execute Updates (Write phase)
 
         # A. Deshabilitar Hitos
-        # Ejecutamos update directo para todos, incluyendo los que ya estaban deshabilitados para ser consistentes,
-        # pero usamos el filtrado simple para el update real.
+        # Ejecutamos update restringido a los CPs afectados
         hitos_afectados = self.session.query(ClienteProcesoHitoModel).filter(
              ClienteProcesoHitoModel.hito_id == hito_id,
-             ClienteProcesoHitoModel.fecha_limite >= fecha_desde
+             ClienteProcesoHitoModel.fecha_limite >= fecha_desde,
+             ClienteProcesoHitoModel.cliente_proceso_id.in_(affected_cp_ids)
         ).update({ClienteProcesoHitoModel.habilitado: False}, synchronize_session=False)
 
         # B. Deshabilitar Parent Processes
