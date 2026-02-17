@@ -137,11 +137,35 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
         return self.session.query(ClienteProcesoHitoModel).filter_by(habilitado=True).all()
 
     def obtener_habilitados_por_cliente_proceso_id(self, cliente_proceso_id: int):
-        """Obtiene solo los hitos habilitados de un proceso de cliente específico"""
-        return self.session.query(ClienteProcesoHitoModel).filter_by(
-            cliente_proceso_id=cliente_proceso_id,
-            habilitado=True
-        ).all()
+        """Obtiene solo los hitos habilitados de un proceso de cliente específico con información adicional de hito"""
+        query = self.session.query(
+            ClienteProcesoHitoModel,
+            HitoModel.obligatorio,
+            HitoModel.critico
+        ).join(
+            HitoModel, ClienteProcesoHitoModel.hito_id == HitoModel.id
+        ).filter(
+            ClienteProcesoHitoModel.cliente_proceso_id == cliente_proceso_id,
+            ClienteProcesoHitoModel.habilitado == True
+        )
+
+        resultados = query.all()
+
+        return [
+            {
+                "id": r[0].id,
+                "cliente_proceso_id": r[0].cliente_proceso_id,
+                "hito_id": r[0].hito_id,
+                "estado": r[0].estado,
+                "fecha_estado": r[0].fecha_estado,
+                "fecha_limite": r[0].fecha_limite,
+                "hora_limite": r[0].hora_limite,
+                "tipo": r[0].tipo,
+                "habilitado": r[0].habilitado,
+                "obligatorio": r[1],
+                "critico": r[2]
+            } for r in resultados
+        ]
 
     def deshabilitar_desde_fecha_por_hito(self, hito_id: int, fecha_desde):
         """Deshabilita todos los ClienteProcesoHito para un hito_id con fecha_limite >= fecha_desde"""
@@ -456,6 +480,7 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
                 # Información del hito maestro
                 HitoModel.nombre.label('hito_nombre'),
                 HitoModel.obligatorio.label('hito_obligatorio'),
+                HitoModel.critico.label('hito_critico'),
                 # Último cumplimiento (si existe)
                 ClienteProcesoHitoCumplimientoModel.id.label('cumplimiento_id'),
                 ClienteProcesoHitoCumplimientoModel.fecha.label('cumplimiento_fecha'),
@@ -522,6 +547,7 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
                 ProcesoModel.nombre,
                 HitoModel.nombre,
                 HitoModel.obligatorio,
+                HitoModel.critico,
                 ClienteProcesoHitoCumplimientoModel.id,
                 ClienteProcesoHitoCumplimientoModel.fecha,
                 ClienteProcesoHitoCumplimientoModel.hora,

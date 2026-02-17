@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Time
+from sqlalchemy import Column, Integer, String, Date, Time, Boolean
 from app.infrastructure.db.database import Base
 from sqlalchemy.orm import relationship
 
@@ -13,5 +13,6 @@ class HitoModel(Base):
     obligatorio = Column(Integer, nullable=False, default=0)  # 0 = No, 1 = Si
     tipo = Column(String(255), nullable=False)
     habilitado = Column(Integer, nullable=False, default=1)  # 0 = No, 1 = Si
+    critico = Column(Boolean, nullable=False, default=False)
 
     procesos = relationship("ProcesoHitoMaestroModel", back_populates="hito", cascade="all, delete-orphan")

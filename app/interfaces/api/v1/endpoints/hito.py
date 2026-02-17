@@ -37,7 +37,8 @@ def crear(
         "hora_limite": "12:00:00",
         "obligatorio": 1,
         "tipo": "Atisa",
-        "habilitado": 1
+        "habilitado": 1,
+        "critico": False
     }),
     repo = Depends(get_repo)
 ):
@@ -53,7 +54,8 @@ def crear(
         descripcion=data.get("descripcion"),
         obligatorio=data.get("obligatorio", False),
         tipo=data.get("tipo"),
-        habilitado=data.get("habilitado", True)
+        habilitado=data.get("habilitado", True),
+        critico=data.get("critico", False)
     )
     return repo.guardar(hito)
 
@@ -165,7 +167,8 @@ def update(
         "temporalidad": "mes",
         "fecha_inicio": "2023-01-01",
         "fecha_fin": "2023-01-10",
-        "obligatorio": 1
+        "obligatorio": 1,
+        "critico": True
     }),
     repo = Depends(get_repo)
 ):
@@ -193,7 +196,7 @@ def delete_hito(
         if tiene_registros:
             raise HTTPException(
                 status_code=409,
-                detail="No se puede eliminar el hito porque tiene registros asociados en clientes."
+                detail="No se puede eliminar por estar asociado al calendario de algún cliente"
             )
 
         # Proceder con el borrado en cascada

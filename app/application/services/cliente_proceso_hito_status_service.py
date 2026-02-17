@@ -88,6 +88,8 @@ class ClienteProcesoHitoStatusService:
                 "proceso_id": row.proceso_id,
                 "proceso_nombre": str(row.proceso_nombre or "").strip(),
                 "hito_nombre": str(row.hito_nombre or "").strip(),
+                "obligatorio": bool(getattr(row, 'hito_obligatorio', 0) == 1),
+                "critico": bool(getattr(row, 'hito_critico', False)),
                 "ultimo_cumplimiento": ultimo_cumplimiento
             }
             hitos_response.append(hito_dict)
@@ -151,7 +153,7 @@ class ClienteProcesoHitoStatusService:
         ws_datos = wb.create_sheet("Datos")
 
         headers = ["Cliente", "Proceso", "Periodo", "Estado Proceso", "Hito", "Fecha Límite", "Hora Límite", "Estado Hito",
-                   "Fecha Estado", "Tipo", "Obligatorio",
+                   "Fecha Estado", "Tipo", "Obligatorio", "Crítico",
                    "Fecha Creación Último Cumplimiento", "Fecha Cumplimiento", "Hora Cumplimiento",
                    "Usuario Cumplimiento", "Departamento Cumplimiento", "Observaciones Cumplimiento"]
         ws_datos.append(headers)
@@ -238,6 +240,7 @@ class ClienteProcesoHitoStatusService:
                 r.fecha_estado.strftime("%d/%m/%Y %H:%M") if r.fecha_estado else "",
                 r.tipo,
                 "Sí" if getattr(r, 'hito_obligatorio', 0) == 1 else "No",
+                "Sí" if getattr(r, 'hito_critico', False) else "No",
                 # Último Cumplimiento
                 r.cumplimiento_fecha_creacion.strftime("%d/%m/%Y %H:%M") if r.cumplimiento_fecha_creacion else "",
                 r.cumplimiento_fecha.strftime("%d/%m/%Y") if r.cumplimiento_fecha else "",

@@ -281,7 +281,9 @@ def exportar_status_hitos_excel(
                 'fecha_limite': hito_model.fecha_limite,
                 'hora_limite': hito_model.hora_limite,
                 'fecha_estado': hito_model.fecha_estado.date() if hito_model.fecha_estado else None,
-                'tipo': hito_model.tipo
+                'tipo': hito_model.tipo,
+                'obligatorio': hito_maestro_model.obligatorio,
+                'critico': hito_maestro_model.critico
             })
 
         if not hitos_data:
@@ -293,7 +295,7 @@ def exportar_status_hitos_excel(
         ws.title = "Status de Hitos"
 
         # Encabezados
-        headers = ["Proceso", "Hito", "Estado", "Fecha Límite", "Hora Límite", "Fecha Estado", "Tipo"]
+        headers = ["Proceso", "Hito", "Estado", "Fecha Límite", "Hora Límite", "Fecha Estado", "Tipo", "Obligatorio", "Crítico"]
         ws.append(headers)
 
         # Formatear encabezados en negrita
@@ -325,7 +327,9 @@ def exportar_status_hitos_excel(
                 formatear_fecha(hito_data['fecha_limite']),
                 formatear_hora(hito_data['hora_limite']),
                 formatear_fecha(hito_data['fecha_estado']),
-                hito_data['tipo']
+                hito_data['tipo'],
+                "Sí" if hito_data['obligatorio'] == 1 else "No",
+                "Sí" if hito_data['critico'] else "No"
             ])
 
             # Aplicar color de fondo y texto blanco a toda la fila
