@@ -251,6 +251,13 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             except ValueError:
                 pass
 
+        print(f"DEBUG: fecha_desde={fecha_desde}, fecha_hasta={fecha_hasta}")
+
+        # Si fecha_hasta no viene informada, usar el úlitmo día del año de fecha_desde
+        if not fecha_hasta:
+            fecha_hasta = date(fecha_desde.year, 12, 31)
+            print(f"DEBUG: fecha_hasta calculada={fecha_hasta}")
+
 
         # Obtener los registros que se van a actualizar
         query = self.session.query(ClienteProcesoHitoModel).filter(

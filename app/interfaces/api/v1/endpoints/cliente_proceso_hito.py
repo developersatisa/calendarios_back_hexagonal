@@ -110,6 +110,27 @@ def obtener_por_fecha(
 def listar(repo = Depends(get_repo)):
     return repo.listar()
 
+@router.put("/update-masivo", summary="Actualización masiva de fechas",
+    description="Actualiza la fecha límite de un hito para múltiples empresas, afectando solo a registros futuros (>= fecha_desde).")
+def update_fecha_masivo(
+    data: UpdateFechaMasivoRequest,
+    repo: ClienteProcesoHitoRepositorySQL = Depends(get_repo)
+):
+    count = actualizar_fecha_masivo(
+        repo=repo,
+        hito_id=data.hito_id,
+        cliente_ids=data.empresa_ids,
+        nueva_fecha=data.nueva_fecha,
+        nueva_hora=data.nueva_hora,
+        fecha_desde=data.fecha_desde,
+        fecha_hasta=data.fecha_hasta
+    )
+
+    return {
+        "mensaje": "Actualización masiva completada",
+        "registros_actualizados": count
+    }
+
 @router.get("/{id}", summary="Obtener relación por ID",
     description="Devuelve una relación cliente-proceso-hito específica según su ID.")
 def get(
@@ -242,24 +263,3 @@ def sincronizar_cliente_proceso(
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al sincronizar cliente_proceso: {str(e)}")
-
-@router.put("/update-masivo", summary="Actualización masiva de fechas",
-    description="Actualiza la fecha límite de un hito para múltiples empresas, afectando solo a registros futuros (>= fecha_desde).")
-def update_fecha_masivo(
-    data: UpdateFechaMasivoRequest,
-    repo: ClienteProcesoHitoRepositorySQL = Depends(get_repo)
-):
-    count = actualizar_fecha_masivo(
-        repo=repo,
-        hito_id=data.hito_id,
-        cliente_ids=data.empresa_ids,
-        nueva_fecha=data.nueva_fecha,
-        nueva_hora=data.nueva_hora,
-        fecha_desde=data.fecha_desde,
-        fecha_hasta=data.fecha_hasta
-    )
-
-    return {
-        "mensaje": "Actualización masiva completada",
-        "registros_actualizados": count
-    }

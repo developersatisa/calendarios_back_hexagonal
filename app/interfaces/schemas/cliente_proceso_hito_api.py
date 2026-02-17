@@ -9,6 +9,12 @@ class UpdateFechaMasivoRequest(BaseModel):
     nueva_hora: Optional[time] = None
     fecha_desde: date
     fecha_hasta: date | None = None
+    @field_validator('fecha_hasta', mode='before')
+    @classmethod
+    def clean_fecha_hasta(cls, v):
+        if v == "":
+            return None
+        return v
 
 
     @field_validator('empresa_ids', mode='before')
