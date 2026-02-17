@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Path, Query
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.orm import Session
 from app.infrastructure.db.database import SessionLocal
 from app.infrastructure.db.repositories.cliente_proceso_hito_repository_sql import ClienteProcesoHitoRepositorySQL
@@ -45,11 +45,25 @@ def crear(
     )
     return repo.guardar(hito)
 
+@router.get("/filtros", summary="Obtener filtros disponibles",
+    description="Devuelve la lista de procesos e hitos disponibles para el mes, año y cliente seleccionados.")
+def obtener_filtros(
+    anio: int = Query(..., description="Año a filtrar"),
+    mes: int = Query(..., description="Mes a filtrar"),
+    cliente_id: Optional[str] = Query(None, description="Cliente a filtrar"),
+    repo = Depends(get_repo)
+):
+    return repo.obtener_filtros(anio, mes, cliente_id)
+
 @router.get("/fecha", summary="Obtener IDs por mes y año",
+
     description="Devuelve una lista de IDs de cliente_proceso_hito filtrada por mes y año.")
 def obtener_por_fecha(
     anio: int = Query(..., description="Año a filtrar (YYYY)"),
     mes: int = Query(..., description="Mes a filtrar (1-12)"),
+    cliente_id: Optional[str] = Query(None, description="Filtrar por ID de cliente"),
+    proceso_ids: Optional[List[int]] = Query(None, description="Filtrar por lista de IDs de procesos"),
+    hito_ids: Optional[List[int]] = Query(None, description="Filtrar por lista de IDs de hitos"),
     page: Optional[int] = Query(None, ge=1, description="Página actual"),
     limit: Optional[int] = Query(None, ge=1, le=10000, description="Cantidad de resultados por página"),
     sort_by: Optional[str] = Query(None, description="Campo por el cual ordenar (id, fecha_limite, hora_limite, cliente, hito, proceso, estado)"),
@@ -57,7 +71,7 @@ def obtener_por_fecha(
     repo = Depends(get_repo)
 ):
     try:
-        items = repo.obtener_por_fecha(anio, mes)
+        items = repo.obtener_por_fecha(anio, mes, cliente_id, proceso_ids, hito_ids)
 
         # Aplicar ordenación
         if sort_by:
@@ -240,6 +254,7 @@ def update_fecha_masivo(
         hito_id=data.hito_id,
         cliente_ids=data.empresa_ids,
         nueva_fecha=data.nueva_fecha,
+        nueva_hora=data.nueva_hora,
         fecha_desde=data.fecha_desde,
         fecha_hasta=data.fecha_hasta
     )

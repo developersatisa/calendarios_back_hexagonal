@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request
 from starlette.concurrency import run_in_threadpool
 import logging
 from typing import Optional, Dict, Any, List
+import json as _json
+import re
 
 from sqlalchemy import text, bindparam
 from sqlalchemy.orm import Session
@@ -97,7 +99,7 @@ def configure_websockets(app: FastAPI):
         """Fetch cliente_proceso_hito records impacted by a hito update, with their estado and subdepar."""
         sql = text(
             """
-            SELECT 
+            SELECT
                 cph.id         AS cph_id,
                 cph.estado     AS estado,
                 cph.hito_id    AS hito_id,
@@ -114,7 +116,7 @@ def configure_websockets(app: FastAPI):
     def _fetch_cph_by_id(session: Session, cph_id: int) -> Optional[Dict[str, Any]]:
         sql = text(
             """
-            SELECT 
+            SELECT
                 cph.id         AS cph_id,
                 cph.estado     AS estado,
                 cph.hito_id    AS hito_id,
@@ -169,7 +171,6 @@ def configure_websockets(app: FastAPI):
         parsed_body = None
         if raw_body:
             try:
-                import json as _json
                 parsed_body = _json.loads(raw_body)
             except Exception:
                 parsed_body = None
@@ -189,7 +190,6 @@ def configure_websockets(app: FastAPI):
                     # No direct subdepar; emit nothing to avoid noisy broadcasts
                     return response
                 # PUT /procesos/{id}
-                import re
                 m = re.match(r"^/procesos/(\d+)$", path)
                 if m:
                     proceso_id = int(m.group(1))
@@ -237,7 +237,6 @@ def configure_websockets(app: FastAPI):
 
             # Hitos
             if path.startswith("/hitos"):
-                import re
                 if method == "PUT":
                     m = re.match(r"^/hitos/(\d+)$", path)
                     if m:
@@ -386,7 +385,6 @@ def configure_websockets(app: FastAPI):
                                 })
                 # PUT updates (if ever added): infer by cp_id path param
                 elif method == "PUT":
-                    import re
                     m = re.match(r"^/cliente-procesos/(\d+)$", path)
                     if m:
                         cp_id = int(m.group(1))
@@ -429,7 +427,6 @@ def configure_websockets(app: FastAPI):
 
             # Admin Hitos Departamento: actualizar campos por CPH
             if path.startswith("/admin-hitos/departamento-hito/") and method == "POST":
-                import re
                 m = re.match(r"^/admin-hitos/departamento-hito/(\d+)$", path)
                 if m:
                     cph_id = int(m.group(1))

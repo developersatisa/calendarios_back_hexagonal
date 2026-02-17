@@ -3,6 +3,7 @@
 import io
 import os
 import zipfile
+import traceback
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
@@ -217,6 +218,5 @@ async def descargar_documentos_cumplimiento(
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error al crear el archivo ZIP: {str(e)}")

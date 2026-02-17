@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
 from sqlalchemy.orm import Session
 from app.infrastructure.db.database import SessionLocal
@@ -113,7 +114,6 @@ def listar(
                     return -1 if not reverse else float('inf')  # None al inicio en asc, al final en desc
                 try:
                     # Convertir fecha a timestamp para ordenación
-                    from datetime import datetime, date
                     if isinstance(value, str):
                         return datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()
                     elif isinstance(value, date):

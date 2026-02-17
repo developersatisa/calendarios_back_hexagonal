@@ -111,6 +111,19 @@ def obtener_todos(
         "clientes": clientes
     }
 
+@router.get("/con-calendario", summary="Listar clientes con calendario activo",
+    description="Devuelve la lista de clientes que tienen al menos un hito habilitado en su calendario.")
+def listar_con_calendario(repo: ClienteRepositorySQL = Depends(get_repo)):
+    clientes = repo.listar_con_hitos()
+    # Ordenar por razón social
+    clientes.sort(key=lambda c: c.razsoc.lower() if c.razsoc else "")
+    return {
+        "total": len(clientes),
+        "page": 1,
+        "limit": len(clientes),
+        "clientes": clientes
+    }
+
 @router.get("/nombre/{nombre}", summary="Buscar clientes por nombre",
     description="Busca clientes que contengan el nombre proporcionado.")
 def buscar_nombre(

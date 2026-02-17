@@ -1,5 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.domain.repositories.cliente_repository import ClienteRepository
 from app.domain.entities.cliente import Cliente
 from app.infrastructure.db.models.cliente_model import ClienteModel
@@ -33,6 +34,10 @@ class ClienteRepositorySQL(ClienteRepository):
             self.session.query(ClienteModel)
             .join(ClienteProcesoModel, ClienteModel.idcliente == ClienteProcesoModel.cliente_id)
             .join(ClienteProcesoHitoModel, ClienteProcesoModel.id == ClienteProcesoHitoModel.cliente_proceso_id)
+            .filter(
+                ClienteProcesoModel.habilitado == True,
+                ClienteProcesoHitoModel.habilitado == True
+            )
             .distinct()
             .all()
         )
@@ -76,7 +81,6 @@ class ClienteRepositorySQL(ClienteRepository):
         return [self._mapear_modelo_a_entidad(r) for r in registros]
 
     def listar_empresas_usuario(self, email: str) -> List[Cliente]:
-        from sqlalchemy import text
         query = text("""
             SELECT c.* FROM [ATISA_Input].dbo.clientes c
             JOIN [ATISA_Input].dbo.clienteSubDepar csd ON c.CIF = csd.cif
@@ -91,8 +95,6 @@ class ClienteRepositorySQL(ClienteRepository):
         return [self._mapear_modelo_a_entidad(r) for r in registros]
 
     def listar_con_departamentos(self, limit: int, offset: int, search: Optional[str] = None, sort_field: Optional[str] = None, sort_direction: str = "asc") -> tuple[List[Cliente], int]:
-        from sqlalchemy import text
-
         # Base query structure for counting and data
         # Debe coincidir con los criterios de la consulta de departamentos
         base_query = """

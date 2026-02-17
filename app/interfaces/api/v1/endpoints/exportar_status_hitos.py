@@ -16,6 +16,9 @@ from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoMod
 from app.infrastructure.db.models.proceso_model import ProcesoModel
 from app.infrastructure.db.models.hito_model import HitoModel
 from app.infrastructure.db.models.cliente_proceso_hito_cumplimiento_model import ClienteProcesoHitoCumplimientoModel
+from app.infrastructure.db.models.proceso_hito_maestro_model import ProcesoHitoMaestroModel
+from sqlalchemy import case
+from datetime import datetime, time as dt_time
 
 try:
     from openpyxl import Workbook
@@ -55,7 +58,6 @@ def calcular_estado_hito(
     2. Si no es 'Finalizado':
        - Compara fecha limite con hoy.
     """
-    from datetime import datetime, time as dt_time
 
     # 1. Obtener fecha/hora del último cumplimiento si existe
     fecha_cumplimiento = None
@@ -169,7 +171,6 @@ def exportar_status_hitos_excel(
             raise HTTPException(status_code=404, detail=f"No se encontraron procesos habilitados para el cliente {cliente_id}")
 
         # Obtener todos los hitos habilitados de los procesos del cliente usando una query optimizada
-        from app.infrastructure.db.models.proceso_hito_maestro_model import ProcesoHitoMaestroModel
 
         # Construir lista de IDs de procesos del cliente
         proceso_ids = [cp.id for cp in procesos_cliente]
@@ -212,7 +213,6 @@ def exportar_status_hitos_excel(
 
         # Ordenar por fecha límite y hora límite ascendente
         # SQL Server no soporta NULLS LAST, usamos CASE para poner NULLs al final
-        from sqlalchemy import case
         query = query.order_by(
             case(
                 (ClienteProcesoHitoModel.fecha_limite.is_(None), 1),

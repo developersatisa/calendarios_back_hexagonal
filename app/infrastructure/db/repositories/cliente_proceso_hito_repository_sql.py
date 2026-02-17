@@ -1,9 +1,22 @@
 # app/infrastructure/db/repositories/cliente_proceso_hito_repository_sql.py
 
+from datetime import date, datetime, time, timedelta
+import calendar
+
+from sqlalchemy import extract, text, func, case, or_, Table, Column, String, MetaData
+
 from app.domain.entities.cliente_proceso_hito import ClienteProcesoHito
 from app.domain.repositories.cliente_proceso_hito_repository import ClienteProcesoHitoRepository
+
 from app.infrastructure.db.models.cliente_proceso_hito_model import ClienteProcesoHitoModel
-from datetime import date, datetime
+from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
+from app.infrastructure.db.models.cliente_model import ClienteModel
+from app.infrastructure.db.models.hito_model import HitoModel
+from app.infrastructure.db.models.proceso_model import ProcesoModel
+from app.infrastructure.db.models.cliente_proceso_hito_cumplimiento_model import ClienteProcesoHitoCumplimientoModel
+from app.infrastructure.db.models.documentos_cumplimiento_model import DocumentoCumplimientoModel
+from app.infrastructure.db.models.subdepar_model import SubdeparModel
+from app.infrastructure.db.models import ProcesoHitoMaestroModel
 
 class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
     def __init__(self, session):
@@ -19,13 +32,7 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
     def listar(self):
         return self.session.query(ClienteProcesoHitoModel).all()
 
-    def obtener_por_fecha(self, anio: int, mes: int) -> list:
-        from sqlalchemy import extract
-        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
-        from app.infrastructure.db.models.cliente_model import ClienteModel
-        from app.infrastructure.db.models.hito_model import HitoModel
-        from app.infrastructure.db.models.proceso_model import ProcesoModel
-
+    def obtener_por_fecha(self, anio: int, mes: int, cliente_id: str = None, proceso_ids: list = None, hito_ids: list = None) -> list:
         query = self.session.query(
             ClienteProcesoHitoModel.id,
             ClienteProcesoHitoModel.fecha_limite,
@@ -33,7 +40,9 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             ClienteProcesoHitoModel.hora_limite,
             ClienteModel.razsoc,
             HitoModel.nombre,
-            ProcesoModel.nombre
+            ProcesoModel.nombre,
+            ProcesoModel.id,
+            HitoModel.id
         ).join(
             ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id
         ).join(
@@ -48,6 +57,15 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             ClienteProcesoHitoModel.habilitado == True
         )
 
+        if cliente_id:
+            query = query.filter(ClienteModel.idcliente == cliente_id)
+
+        if proceso_ids:
+            query = query.filter(ProcesoModel.id.in_(proceso_ids))
+
+        if hito_ids:
+            query = query.filter(HitoModel.id.in_(hito_ids))
+
         resultados = query.all()
 
         return [
@@ -58,9 +76,47 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
                 "hora_limite": r[3],
                 "cliente": r[4],
                 "hito": r[5],
-                "proceso": r[6]
+                "proceso": r[6],
+                "proceso_id": r[7],
+                "hito_id": r[8]
             } for r in resultados
         ]
+
+    def obtener_filtros(self, anio: int, mes: int, cliente_id: str = None):
+        # Base filters
+        filters = [
+            extract('year', ClienteProcesoHitoModel.fecha_limite) == anio,
+            extract('month', ClienteProcesoHitoModel.fecha_limite) == mes,
+            ClienteProcesoHitoModel.habilitado == True,
+            ClienteProcesoModel.habilitado == True
+        ]
+
+        # Query Procesos
+        q_procesos = self.session.query(ProcesoModel.id, ProcesoModel.nombre).join(
+            ClienteProcesoModel, ProcesoModel.id == ClienteProcesoModel.proceso_id
+        ).join(
+            ClienteProcesoHitoModel, ClienteProcesoModel.id == ClienteProcesoHitoModel.cliente_proceso_id
+        ).filter(*filters)
+
+        # Query Hitos
+        q_hitos = self.session.query(HitoModel.id, HitoModel.nombre).join(
+            ClienteProcesoHitoModel, HitoModel.id == ClienteProcesoHitoModel.hito_id
+        ).join(
+            ClienteProcesoModel, ClienteProcesoHitoModel.cliente_proceso_id == ClienteProcesoModel.id
+        ).filter(*filters)
+
+        if cliente_id:
+            # Need to join ClienteModel only if filtering by client
+            q_procesos = q_procesos.join(ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente).filter(ClienteModel.idcliente == cliente_id)
+            q_hitos = q_hitos.join(ClienteModel, ClienteProcesoModel.cliente_id == ClienteModel.idcliente).filter(ClienteModel.idcliente == cliente_id)
+
+        procesos = q_procesos.distinct().all()
+        hitos = q_hitos.distinct().all()
+
+        return {
+            "procesos": [{"id": p[0], "nombre": p[1]} for p in procesos],
+            "hitos": [{"id": h[0], "nombre": h[1]} for h in hitos]
+        }
 
     def obtener_por_id(self, id: int):
         return self.session.query(ClienteProcesoHitoModel).filter_by(id=id).first()
@@ -89,7 +145,6 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
 
     def deshabilitar_desde_fecha_por_hito(self, hito_id: int, fecha_desde):
         """Deshabilita todos los ClienteProcesoHito para un hito_id con fecha_limite >= fecha_desde"""
-        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
 
         # Normalizar fecha_desde a date
         if isinstance(fecha_desde, str):
@@ -149,7 +204,6 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
 
     def sincronizar_estado_cliente_proceso(self, cliente_proceso_id: int):
         """Verifica y actualiza el estado de habilitado de un cliente_proceso basado en sus hitos"""
-        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
 
         # Contar hitos habilitados para este cliente_proceso
         hitos_habilitados = self.session.query(ClienteProcesoHitoModel).filter(
@@ -185,10 +239,8 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             'hitos_habilitados': hitos_habilitados
         }
 
-    def actualizar_fecha_masivo(self, hito_id: int, cliente_ids: list[int], nueva_fecha: date, fecha_desde: date, fecha_hasta: date | None = None) -> int:
-        """Actualiza la fecha_limite de un hito para múltiples clientes, aplicando solo si la fecha actual >= fecha_desde"""
-        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
-        from datetime import datetime, date, timedelta
+    def actualizar_fecha_masivo(self, hito_id: int, cliente_ids: list[int], nueva_fecha: date, nueva_hora: time | None, fecha_desde: date, fecha_hasta: date | None = None) -> int:
+        """Actualiza la fecha_limite y opcionalmente la hora_limite de un hito para múltiples clientes, aplicando solo si la fecha actual >= fecha_desde"""
 
         # Normalizar fecha_desde a date si es datetime o string
         if isinstance(fecha_desde, datetime):
@@ -221,6 +273,10 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
         nuevo_dia = nueva_fecha.day
 
         for registro in registros_a_actualizar:
+            # Actualizar hora si se proporciona
+            if nueva_hora is not None:
+                registro.hora_limite = nueva_hora
+
             if registro.fecha_limite:
                 try:
                     # Mantener el año y mes original, cambiar solo el día
@@ -238,7 +294,6 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
                 except ValueError:
                     # Si el día no es válido para ese mes (ej: 31 en febrero)
                     # Usar el último día del mes
-                    import calendar
                     ultimo_dia = calendar.monthrange(registro.fecha_limite.year, registro.fecha_limite.month)[1]
                     dia_a_usar = min(nuevo_dia, ultimo_dia)
                     fecha_actualizada = registro.fecha_limite.replace(day=dia_a_usar)
@@ -257,9 +312,6 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
         return updated_count
 
     def actualizar(self, id: int, data: dict):
-        from datetime import datetime, date
-        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
-
         hito = self.obtener_por_id(id)
         if not hito:
             return None
@@ -313,7 +365,6 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
 
     def verificar_registros_por_hito(self, hito_id: int):
         """Verifica si existe algún registro para un hito específico"""
-        from app.infrastructure.db.models import ProcesoHitoMaestroModel
 
         # Buscar cualquier registro en cliente_proceso_hito que referencie al hito a través de proceso_hito_maestro
         resultado = self.session.query(ClienteProcesoHitoModel).join(
@@ -327,7 +378,6 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
 
     def eliminar_por_hito_id(self, hito_id: int):
         """Elimina todos los registros de cliente_proceso_hito asociados a un hito específico"""
-        from app.infrastructure.db.models import ProcesoHitoMaestroModel
 
         # Obtener los IDs de proceso_hito_maestro que referencian al hito
         proceso_hito_ids = self.session.query(ProcesoHitoMaestroModel.id).filter(
@@ -346,18 +396,10 @@ class ClienteProcesoHitoRepositorySQL(ClienteProcesoHitoRepository):
             self.session.commit()
             return eliminados
 
+        return 0
+
 
     def ejecutar_reporte_status_todos_clientes(self, filtros: dict, paginacion: dict):
-        from sqlalchemy import text, func, case, or_, Table, Column, String, MetaData
-        from app.infrastructure.db.models.cliente_proceso_hito_model import ClienteProcesoHitoModel
-        from app.infrastructure.db.models.cliente_proceso_model import ClienteProcesoModel
-        from app.infrastructure.db.models.cliente_model import ClienteModel
-        from app.infrastructure.db.models.proceso_model import ProcesoModel
-        from app.infrastructure.db.models.hito_model import HitoModel
-        from app.infrastructure.db.models.cliente_proceso_hito_cumplimiento_model import ClienteProcesoHitoCumplimientoModel
-        from app.infrastructure.db.models.documentos_cumplimiento_model import DocumentoCumplimientoModel
-        from app.infrastructure.db.models.subdepar_model import SubdeparModel
-
         # Definir tabla externa Persona
         metadata = MetaData()
         # Se asume que el driver manejara los espacios en el nombre de la BD si se pasa como schema

@@ -1,11 +1,12 @@
 from pydantic import BaseModel, field_validator
-from datetime import date
-from typing import List
+from datetime import date, time
+from typing import List, Optional
 
 class UpdateFechaMasivoRequest(BaseModel):
     hito_id: int
     empresa_ids: List[int]
     nueva_fecha: date
+    nueva_hora: Optional[time] = None
     fecha_desde: date
     fecha_hasta: date | None = None
 

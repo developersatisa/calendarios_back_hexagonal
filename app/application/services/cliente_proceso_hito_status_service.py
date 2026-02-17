@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict, Any
 from datetime import date, time, datetime
+from calendar import monthrange
 import io
 from fastapi import HTTPException
 
@@ -194,7 +195,7 @@ class ClienteProcesoHitoStatusService:
             else:
                 info['estado'] = 'En proceso'
 
-        from calendar import monthrange
+                info['estado'] = 'En proceso'
 
         # Llenar filas
         for r in resultados:

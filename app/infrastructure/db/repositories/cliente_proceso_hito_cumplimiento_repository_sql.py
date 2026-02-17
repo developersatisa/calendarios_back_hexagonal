@@ -1,6 +1,6 @@
 # app/infrastructure/db/repositories/cliente_proceso_hito_cumplimiento_repository_sql.py
-
-from sqlalchemy import func
+from datetime import datetime, timedelta
+from sqlalchemy import func, text
 from app.domain.entities.cliente_proceso_hito_cumplimiento import ClienteProcesoHitoCumplimiento
 from app.domain.repositories.cliente_proceso_hito_cumplimiento_repository import ClienteProcesoHitoCumplimientoRepository
 from app.infrastructure.db.models.cliente_proceso_hito_cumplimiento_model import ClienteProcesoHitoCumplimientoModel
@@ -13,7 +13,6 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
         self.session = session
 
     def guardar(self, cliente_proceso_hito_cumplimiento: ClienteProcesoHitoCumplimiento):
-        from datetime import datetime, timedelta
 
         # Obtener todos los atributos de la entidad
         datos = vars(cliente_proceso_hito_cumplimiento)
@@ -219,7 +218,6 @@ class ClienteProcesoHitoCumplimientoRepositorySQL(ClienteProcesoHitoCumplimiento
 
     def obtener_historial_por_cliente_id(self, cliente_id: str, skip: int = 0, limit: int = 100):
         """Obtiene el historial de cumplimientos de un cliente con información completa de proceso e hito"""
-        from sqlalchemy import text
 
         query = text("""
             SELECT cpc.id, cpc.fecha, cpc.hora,
