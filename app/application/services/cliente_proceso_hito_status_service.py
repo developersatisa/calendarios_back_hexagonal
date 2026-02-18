@@ -141,45 +141,40 @@ class ClienteProcesoHitoStatusService:
 
         # 3. Generar Excel
         wb = Workbook()
+        ws = wb.active
+        ws.title = "Reporte Status"
 
-        # PRIMERA HOJA: Filtros Aplicados
-        ws_filtros = wb.active
-        ws_filtros.title = "Filtros Aplicados"
-
-        # Título
-        ws_filtros.append(["FILTROS APLICADOS"])
-        ws_filtros["A1"].font = Font(size=14, bold=True)
-        ws_filtros.append(["-" * 50])
-        ws_filtros.append([])
+        # --- SECCIÓN FILTROS ---
+        ws.append(["FILTROS APLICADOS"])
+        ws["A1"].font = Font(size=14, bold=True)
+        ws.append(["-" * 50])
+        ws.append([])
 
         # Detalles de filtros
-        ws_filtros.append(["Cliente:", filtros.get('cliente_id') or "Todos"])
-        ws_filtros.append(["Proceso:", filtros.get('proceso_nombre') or "Todos"])
-        ws_filtros.append(["Hito ID:", str(filtros.get('hito_id')) if filtros.get('hito_id') else "Todos"])
-        ws_filtros.append(["Fecha Desde:", filtros.get('fecha_limite_desde') or "Sin filtro"])
-        ws_filtros.append(["Fecha Hasta:", filtros.get('fecha_limite_hasta') or "Sin filtro"])
-        ws_filtros.append(["Estados:", estados.replace(",", ", ") if estados else "Todos"])
-        ws_filtros.append(["Tipos:", filtros.get('tipos').replace(",", ", ") if filtros.get('tipos') else "Todos"])
-        ws_filtros.append(["Búsqueda:", filtros.get('search_term') or "Sin búsqueda"])
-        ws_filtros.append([])
-        ws_filtros.append(["Fecha de Generación:", datetime.now().strftime("%d/%m/%Y %H:%M:%S")])
-        ws_filtros.append(["Total de Registros:", len(resultados)])
+        ws.append(["Cliente:", filtros.get('cliente_id') or "Todos"])
+        ws.append(["Proceso:", filtros.get('proceso_nombre') or "Todos"])
+        ws.append(["Hito ID:", str(filtros.get('hito_id')) if filtros.get('hito_id') else "Todos"])
+        ws.append(["Fecha Desde:", filtros.get('fecha_limite_desde') or "Sin filtro"])
+        ws.append(["Fecha Hasta:", filtros.get('fecha_limite_hasta') or "Sin filtro"])
+        ws.append(["Estados:", estados.replace(",", ", ") if estados else "Todos"])
+        ws.append(["Tipos:", filtros.get('tipos').replace(",", ", ") if filtros.get('tipos') else "Todos"])
+        ws.append(["Búsqueda:", filtros.get('search_term') or "Sin búsqueda"])
+        ws.append([])
+        ws.append(["Fecha de Generación:", datetime.now().strftime("%d/%m/%Y %H:%M:%S")])
+        ws.append(["Total de Registros:", len(resultados)])
+        ws.append([])
+        ws.append([])
 
-        # Ajustar ancho de columnas
-        ws_filtros.column_dimensions["A"].width = 25
-        ws_filtros.column_dimensions["B"].width = 50
+        # --- SECCIÓN DATOS ---
+        headers = ["Cliente", "Cubo", "Proceso", "Periodo", "Estado Proceso", "Hito", "Responsable", "Clave",
+                   "Estado", "Fecha Límite", "Hora Límite", "Fecha y Hora Actualización", "Gestor", "Observaciones",
+                   "Fecha Cumplimiento", "Hora Cumplimiento",
+                   "Fecha Creación Cumplimiento", "Cubo Cumplimiento"]
+        ws.append(headers)
 
-        # SEGUNDA HOJA: Datos
-        ws_datos = wb.create_sheet("Datos")
-
-        headers = ["Cliente", "Proceso", "Periodo", "Estado Proceso", "Hito", "Fecha Límite", "Hora Límite", "Estado Hito",
-                   "Fecha Estado", "Tipo", "Obligatorio", "Crítico",
-                   "Fecha Creación Último Cumplimiento", "Fecha Cumplimiento", "Hora Cumplimiento",
-                   "Usuario Cumplimiento", "Departamento Cumplimiento", "Observaciones Cumplimiento"]
-        ws_datos.append(headers)
-
-        # Estilo headers
-        for cell in ws_datos[1]:
+        # Estilo headers (fila actual es max_row)
+        header_row = ws[ws.max_row]
+        for cell in header_row:
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill(start_color="1f4788", end_color="1f4788", fill_type="solid")
             cell.alignment = Alignment(horizontal="center")
@@ -246,48 +241,85 @@ class ClienteProcesoHitoStatusService:
 
             estado_proceso = cp_info.get('estado', 'En proceso')
 
-            ws_datos.append([
+            # Definir valores de cumplimiento si existen
+            gestor = ""
+            observaciones = ""
+            fecha_creacion = ""
+            fecha_cumplimiento = ""
+            hora_cumplimiento = ""
+            dept_cumplimiento = ""
+
+            if getattr(r, 'cumplimiento_id', None):
+                gestor = str(r.cumplimiento_usuario or "").strip()
+                observaciones = str(r.cumplimiento_observacion or "").strip()
+                fecha_creacion = r.cumplimiento_fecha_creacion.strftime("%d/%m/%Y %H:%M") if r.cumplimiento_fecha_creacion else ""
+                fecha_cumplimiento = r.cumplimiento_fecha.strftime("%d/%m/%Y") if r.cumplimiento_fecha else ""
+                hora_cumplimiento = r.cumplimiento_hora.strftime("%H:%M") if r.cumplimiento_hora else ""
+
+                dept_cump_name = str(r.cumplimiento_departamento or "").strip()
+                dept_cump_code = str(r.cumplimiento_codSubDepar or "").strip()
+                if dept_cump_code:
+                     suffix_cump = dept_cump_code[-2:] if len(dept_cump_code) >= 2 else dept_cump_code
+                     dept_cumplimiento = f"{suffix_cump} - {dept_cump_name}"
+                else:
+                     dept_cumplimiento = dept_cump_name
+
+            # Formatear Departamento Combinado
+            dept_nombre = str(getattr(r, 'cliente_departamento_nombre', '') or "").strip()
+            dept_codigo = str(getattr(r, 'cliente_departamento_codigo', '') or "").strip()
+            dept_combined = ""
+            if dept_codigo:
+                # Tomar ultimos 2 digitos del codigo y concatenar con nombre
+                suffix = dept_codigo[-2:] if len(dept_codigo) >= 2 else dept_codigo
+                dept_combined = f"{suffix} - {dept_nombre}"
+            else:
+                dept_combined = dept_nombre
+
+            ws.append([
                 str(r.cliente_nombre or "").strip(),
+                dept_combined, # Departamento (Cubo - Linea)
                 str(r.proceso_nombre or "").strip(),
                 periodo,
                 estado_proceso,
                 str(r.hito_nombre or "").strip(),
+                str(r.tipo or ""), # Responsable
+                "Clave" if getattr(r, 'hito_critico', False) else "No Clave",
+                estado_calculado,
                 r.fecha_limite.strftime("%d/%m/%Y") if r.fecha_limite else "",
                 r.hora_limite.strftime("%H:%M") if r.hora_limite else "",
-                estado_calculado,
-                r.fecha_estado.strftime("%d/%m/%Y %H:%M") if r.fecha_estado else "",
-                r.tipo,
-                "Sí" if getattr(r, 'hito_obligatorio', 0) == 1 else "No",
-                "Sí" if getattr(r, 'hito_critico', False) else "No",
-                # Último Cumplimiento
-                r.cumplimiento_fecha_creacion.strftime("%d/%m/%Y %H:%M") if r.cumplimiento_fecha_creacion else "",
-                r.cumplimiento_fecha.strftime("%d/%m/%Y") if r.cumplimiento_fecha else "",
-                r.cumplimiento_hora.strftime("%H:%M") if r.cumplimiento_hora else "",
-                str(r.cumplimiento_usuario or "").strip() if r.cumplimiento_id else "",
-                str(r.cumplimiento_departamento or "").strip() if r.cumplimiento_id else "",
-                str(r.cumplimiento_observacion or "").strip() if r.cumplimiento_id else ""
+                r.fecha_estado.strftime("%d/%m/%Y") if r.fecha_estado else "", # Fecha y Hora Actualización
+                gestor,
+                observaciones,
+                # Columnas extra sin Obligatorio
+                fecha_cumplimiento,
+                hora_cumplimiento,
+                fecha_creacion,
+                dept_cumplimiento
             ])
 
             # Aplicar color
-            fila_numero = ws_datos.max_row
+            fila_numero = ws.max_row
             fill_color = colores_estado.get(estado_calculado)
             if fill_color:
-                for cell in ws_datos[fila_numero]:
+                for cell in ws[fila_numero]:
                     cell.fill = fill_color
                     cell.font = font_blanco
 
         # Auto-ajustar columnas
-        for col in ws_datos.columns:
+        for col in ws.columns:
             max_length = 0
             column_letter = col[0].column_letter
             for cell in col:
+                # Ignorar filas de filtro para el ajuste de ancho para evitar columnas gigantes por los titulos
+                if cell.row < 15:
+                    continue
                 try:
                     val = str(cell.value)
                     if len(val) > max_length:
                         max_length = len(val)
                 except:
                     pass
-            ws_datos.column_dimensions[column_letter].width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
 
         output = io.BytesIO()
         wb.save(output)

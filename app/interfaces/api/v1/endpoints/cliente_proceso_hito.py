@@ -225,7 +225,8 @@ def exportar_status_todos_excel_por_usuario(
 
         output = service.exportar_reporte_excel_por_usuario(filtros, email)
 
-        filename = f"status_mis_clientes_{date.today().strftime('%Y-%m-%d')}.xlsx"
+        from datetime import datetime
+        filename = f"status_mis_clientes_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
