@@ -69,15 +69,21 @@ class ClienteProcesoHitoStatusService:
                     "hora": str(row.cumplimiento_hora) if row.cumplimiento_hora else None,
                     "observacion": row.cumplimiento_observacion,
                     "usuario": row.cumplimiento_usuario,
+                    "departamento": str(row.cumplimiento_departamento or "").strip(),
+                    "codSubDepar": row.cumplimiento_codSubDepar,
                     "fecha_creacion": row.cumplimiento_fecha_creacion.isoformat() if row.cumplimiento_fecha_creacion else None,
                     "num_documentos": int(row.num_documentos or 0)
                 }
+
+            estado_calc = self._calculate_excel_status(row.estado, row.fecha_limite, row.hora_limite, row.cumplimiento_fecha)
 
             hito_dict = {
                 "id": row.id,
                 "cliente_proceso_id": row.cliente_proceso_id,
                 "hito_id": row.hito_id,
                 "estado": row.estado,
+                "estado_calculado": estado_calc,
+                "estado_proceso": getattr(row, 'proceso_estado', 'En proceso'),
                 "fecha_estado": row.fecha_estado.isoformat() if row.fecha_estado else None,
                 "fecha_limite": row.fecha_limite.isoformat() if row.fecha_limite else None,
                 "hora_limite": str(row.hora_limite) if row.hora_limite else None,
@@ -85,6 +91,8 @@ class ClienteProcesoHitoStatusService:
                 "habilitado": bool(row.habilitado),
                 "cliente_id": str(row.cliente_id or ""),
                 "cliente_nombre": str(row.cliente_nombre or "").strip(),
+                "codSubDepar": row.cliente_departamento_codigo,
+                "departamento_cliente": str(getattr(row, 'cliente_departamento_nombre', '') or "").strip(),
                 "proceso_id": row.proceso_id,
                 "proceso_nombre": str(row.proceso_nombre or "").strip(),
                 "hito_nombre": str(row.hito_nombre or "").strip(),
@@ -106,6 +114,18 @@ class ClienteProcesoHitoStatusService:
         # 1. Obtener datos (sin paginación)
         resultados, _ = self.repository.ejecutar_reporte_status_todos_clientes(filtros, {})
 
+        return self._generar_excel(resultados, filtros)
+
+    def exportar_reporte_excel_por_usuario(self, filtros: dict, email: str):
+        if Workbook is None:
+            raise HTTPException(status_code=500, detail="La librería 'openpyxl' no está instalada.")
+
+        # 1. Obtener datos filtrados por usuario (sin paginación)
+        resultados, _ = self.repository.ejecutar_reporte_status_todos_clientes_por_usuario(filtros, {}, email)
+
+        return self._generar_excel(resultados, filtros)
+
+    def _generar_excel(self, resultados, filtros):
         # 2. Filtrar por estados calculados (post-query)
         estados = filtros.get('estados')
         if estados:
@@ -195,8 +215,6 @@ class ClienteProcesoHitoStatusService:
             if info['hitos_finalizados'] == info['total_hitos']:
                 info['estado'] = 'Finalizado'
             else:
-                info['estado'] = 'En proceso'
-
                 info['estado'] = 'En proceso'
 
         # Llenar filas

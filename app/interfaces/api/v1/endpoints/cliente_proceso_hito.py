@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Path, Query
+from fastapi.responses import StreamingResponse
+from app.application.services.cliente_proceso_hito_status_service import ClienteProcesoHitoStatusService
 from typing import Optional, List
+from datetime import date
 from sqlalchemy.orm import Session
 from app.infrastructure.db.database import SessionLocal
 from app.infrastructure.db.repositories.cliente_proceso_hito_repository_sql import ClienteProcesoHitoRepositorySQL
@@ -19,6 +22,9 @@ def get_db():
 
 def get_repo(db: Session = Depends(get_db)):
     return ClienteProcesoHitoRepositorySQL(db)
+
+def get_service(repo: ClienteProcesoHitoRepositorySQL = Depends(get_repo)):
+    return ClienteProcesoHitoStatusService(repo)
 
 @router.post("/cliente-proceso-hitos", tags=["ClienteProcesoHito"], summary="Crear relación cliente-proceso-hito",
     description="Crea una nueva relación entre un cliente, proceso e hito especificando los IDs correspondientes y fecha límite.")
@@ -104,6 +110,132 @@ def obtener_por_fecha(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener IDs: {str(e)}")
+
+@router.get("/status-todos-clientes/hitos", summary="Listar hitos de clientes asignados al usuario",
+    description="Devuelve el estado de hitos de los clientes asociados al email proporcionado.")
+def status_todos_clientes_hitos(
+    email: str = Query(..., description="Email del usuario para filtrar clientes"),
+    fecha_limite_desde: Optional[date] = Query(None, alias="fecha_desde"),
+    fecha_limite_hasta: Optional[date] = Query(None, alias="fecha_hasta"),
+    cliente_id: Optional[str] = Query(None),
+    proceso_id: Optional[int] = Query(None),
+    hito_id: Optional[int] = Query(None),
+    proceso_nombre: Optional[str] = Query(None),
+    tipos: Optional[str] = Query(None),
+    search_term: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    order: Optional[str] = Query("asc"),
+    page: int = Query(1, ge=1),
+    limit: Optional[int] = Query(100, ge=0),
+    repo: ClienteProcesoHitoRepositorySQL = Depends(get_repo)
+):
+    filtros = {
+        "fecha_limite_desde": fecha_limite_desde,
+        "fecha_limite_hasta": fecha_limite_hasta,
+        "cliente_id": cliente_id,
+        "proceso_id": proceso_id,
+        "hito_id": hito_id,
+        "proceso_nombre": proceso_nombre,
+        "tipos": tipos,
+        "search_term": search_term,
+        "ordenar_por": sort_by,
+        "orden": order
+    }
+
+    paginacion = {}
+    if limit is not None and limit > 0:
+        paginacion = {
+            "offset": (page - 1) * limit,
+            "limit": limit
+        }
+
+    try:
+        registros, total = repo.ejecutar_reporte_status_todos_clientes_por_usuario(filtros, paginacion, email)
+
+        data = []
+        for r in registros:
+            ultimo_cumplimiento = None
+            if r.cumplimiento_id:
+                ultimo_cumplimiento = {
+                    "id": r.cumplimiento_id,
+                    "fecha": r.cumplimiento_fecha.isoformat() if r.cumplimiento_fecha else None,
+                    "hora": str(r.cumplimiento_hora) if r.cumplimiento_hora else None,
+                    "observacion": r.cumplimiento_observacion,
+                    "usuario": r.cumplimiento_usuario,
+                    "fecha_creacion": r.cumplimiento_fecha_creacion.isoformat() if r.cumplimiento_fecha_creacion else None,
+                    "num_documentos": int(r.num_documentos or 0)
+                }
+
+            item = {
+                "id": r.id,
+                "cliente_proceso_id": r.cliente_proceso_id,
+                "hito_id": r.hito_id,
+                "estado": r.estado,
+                "fecha_estado": r.fecha_estado.isoformat() if r.fecha_estado else None,
+                "fecha_limite": r.fecha_limite.isoformat() if r.fecha_limite else None,
+                "hora_limite": str(r.hora_limite) if r.hora_limite else None,
+                "tipo": r.tipo,
+                "habilitado": bool(r.habilitado),
+                "cliente_id": str(r.cliente_id or ""),
+                "cliente_nombre": str(r.cliente_nombre or "").strip(),
+                "proceso_id": r.proceso_id,
+                "proceso_nombre": str(r.proceso_nombre or "").strip(),
+                "hito_nombre": str(r.hito_nombre or "").strip(),
+                "obligatorio": bool(getattr(r, 'hito_obligatorio', 0) == 1),
+                "critico": bool(getattr(r, 'hito_critico', False)),
+                "ultimo_cumplimiento": ultimo_cumplimiento
+            }
+            data.append(item)
+
+        return {
+            "hitos": data,
+            "total": total
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener reporte: {str(e)}")
+
+
+@router.get("/status-todos-clientes/exportar-excel", summary="Exportar status de clientes asignados a Excel",
+    description="Genera y descarga un archivo Excel con el estado de los hitos de los clientes asociados al email proporcionado.")
+def exportar_status_todos_excel_por_usuario(
+    email: str = Query(..., description="Email del usuario para filtrar clientes"),
+    fecha_limite_desde: Optional[date] = Query(None),
+    fecha_limite_hasta: Optional[date] = Query(None),
+    cliente_id: Optional[str] = Query(None),
+    proceso_id: Optional[int] = Query(None),
+    hito_id: Optional[int] = Query(None),
+    proceso_nombre: Optional[str] = Query(None),
+    tipos: Optional[str] = Query(None),
+    search_term: Optional[str] = Query(None),
+    estados: Optional[str] = Query(None, description="Filtrar por estados (separados por coma)"),
+    service: ClienteProcesoHitoStatusService = Depends(get_service)
+):
+    try:
+        filtros = {
+            "fecha_limite_desde": fecha_limite_desde,
+            "fecha_limite_hasta": fecha_limite_hasta,
+            "cliente_id": cliente_id,
+            "proceso_id": proceso_id,
+            "hito_id": hito_id,
+            "proceso_nombre": proceso_nombre,
+            "tipos": tipos,
+            "search_term": search_term,
+            "estados": estados
+        }
+
+        output = service.exportar_reporte_excel_por_usuario(filtros, email)
+
+        filename = f"status_mis_clientes_{date.today().strftime('%Y-%m-%d')}.xlsx"
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename={filename}',
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al exportar Excel: {str(e)}")
 
 @router.get("", summary="Listar todas las relaciones cliente-proceso-hito",
     description="Devuelve todas las relaciones entre clientes, procesos e hitos registradas.")
