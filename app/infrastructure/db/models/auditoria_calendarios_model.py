@@ -10,8 +10,10 @@ class AuditoriaCalendariosModel(Base):
     campo_modificado = Column(String(255), nullable=False)
     valor_anterior = Column(String(255), nullable=False)
     valor_nuevo = Column(String(255), nullable=False)
-    usuario_modificacion = Column(String(255), nullable=False)
-    fecha_modificacion = Column(DateTime, nullable=False)
     observaciones = Column(String(255), nullable=True)
+    motivo = Column(Integer, nullable=True)
+    usuario = Column(String(255), nullable=False) # numeross del usuario
+    codSubDepar = Column(String(6), nullable=True, default=None)
+    fecha_modificacion = Column(DateTime, nullable=False)
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
